@@ -11,9 +11,16 @@ import { ChevronLeft, FastForward, ListIcon, PauseIcon, PlayIcon, Plus } from '.
 import { ShortcutsModal } from '../components/ShortcutsModal'
 import { Toasts } from '../components/Toasts'
 import ui from '../components/ui.module.css'
+import { useEditorShortcuts } from '../hooks/useEditorShortcuts'
 import { useToasts } from '../hooks/useToasts'
 import { useVideoPlayer } from '../hooks/useVideoPlayer'
-import { findOverlappingIds, manualClipSpan, totalClippedDuration, type Clip } from '../lib/clips'
+import {
+  FRAME_DURATION,
+  findOverlappingIds,
+  manualClipSpan,
+  totalClippedDuration,
+  type Clip,
+} from '../lib/clips'
 import { currentClipIndex, nextClipIndex, prevClipIndex } from '../lib/navigation'
 import { canEndMark, initialSession, sessionReducer } from '../lib/session'
 import { formatTime } from '../lib/time'
@@ -134,6 +141,35 @@ export function Editor({
 
   const exportJson = useCallback(() => undefined, [])
   const closePanel = useCallback(() => setPanelOpen(false), [])
+
+  const selectedClip = selectedIndex >= 0 ? clips[selectedIndex] : null
+
+  useEditorShortcuts({
+    mark,
+    togglePlay: player.toggle,
+    seekBy: (seconds) => player.seek(now() + seconds),
+    stepFrame: (direction) => {
+      if (player.paused) player.seek(now() + direction * FRAME_DURATION)
+    },
+    prevClip: () => goToClip(prevClipIndex(clips, now(), selectedId)),
+    nextClip: () => goToClip(nextClipIndex(clips, now(), selectedId)),
+    cycleSpeed,
+    editSelected: () => {
+      if (selectedClip) setEditingId(selectedClip.id)
+    },
+    deleteSelected: () => {
+      if (selectedClip) deleteClip(selectedClip)
+    },
+    undo: () => dispatch({ type: 'undo' }),
+    redo: () => dispatch({ type: 'redo' }),
+    escape: () => {
+      if (helpOpen) setHelpOpen(false)
+      else if (editingClip) setEditingId(null)
+      else if (panelOpen) setPanelOpen(false)
+      else if (openStart !== null) dispatch({ type: 'cancelMark' })
+    },
+    showShortcuts: () => setHelpOpen(true),
+  })
 
   const onVideoPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
