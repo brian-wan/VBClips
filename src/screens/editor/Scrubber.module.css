@@ -1,0 +1,81 @@
+.wrap {
+  padding: 8px 0 0;
+}
+
+.hitArea {
+  position: relative;
+  height: 28px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: var(--radius-pill);
+  background: var(--color-separator);
+  overflow: hidden;
+}
+
+.clip,
+.live {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+}
+
+.clip {
+  background: var(--color-accent);
+}
+
+.live {
+  background: var(--color-accent-soft);
+}
+
+.playhead {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-text);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: 100%;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  transform: translateX(-50%);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.times {
+  display: flex;
+  justify-content: space-between;
+  color: var(--color-text-secondary);
+  font-size: var(--font-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.rate {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: #000;
+  font-size: 12px;
+  font-weight: 700;
+}
