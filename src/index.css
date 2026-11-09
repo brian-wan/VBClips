@@ -23,6 +23,11 @@
   --radius-sheet: 24px;
   --pressed-opacity: 0.85;
   --motion: 150ms ease-out;
+  --motion-glyph: 400ms ease-out;
+  --font-tooltip: 13px;
+  --radius-card: 16px;
+  --color-hover: #3a3a3c;
+  --color-focus: var(--color-accent);
 
   color-scheme: dark;
   font-family: var(--font-family);
@@ -52,4 +57,20 @@ body {
 button {
   font: inherit;
   color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
 }
