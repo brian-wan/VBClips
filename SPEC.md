@@ -232,6 +232,13 @@ with ffmpeg.wasm; no upload, no server.
   `@ffmpeg/core` (single thread) otherwise. Core `.js`/`.wasm`/`.worker.js` files are served from
   the app itself (import with Vite `?url`), never from a CDN, so the app works offline and is not
   at the mercy of a third-party host.
+- The multi-thread core can hang on load in some Chromium builds even when the page is isolated
+  (seen in the Claude desktop browser: the single-thread core loads in 0.1 s, the multi-thread core
+  never resolves). Loading the multi-thread core therefore races a 8 s timeout; on timeout the
+  adapter terminates it, loads the single-thread core, remembers that choice for the rest of the
+  page's life, and emits a log line "Multi-thread core did not start; using the single-thread
+  core" that the dialog shows under the progress bar. A join must never wait forever on
+  "Loading ffmpeg": after 5 s in that phase the dialog adds "First load downloads about 30 MB".
 - `vite.config.ts` sets `Cross-Origin-Opener-Policy: same-origin` and
   `Cross-Origin-Embedder-Policy: require-corp` on both `server` and `preview` so the
   multi-threaded core can use `SharedArrayBuffer` in dev. Document in the README that static hosts
