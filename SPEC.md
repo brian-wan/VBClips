@@ -21,9 +21,8 @@ decisions. If something here is impossible, say so in the report instead of impr
 
 1. Editor (this phase): home, choose video, mark clips, clip list, navigation, edit, delete,
    undo, session persistence, keyboard shortcuts, JSON export of markers.
-2. Join: render the clips into one downloadable mp4 in the browser with ffmpeg.wasm
-   (re-encode each segment for frame-accurate cuts, then concat). Button exists in phase 1
-   but is disabled with a "coming soon" tooltip.
+2. Join: render the clips into one downloadable mp4 in the browser with ffmpeg.wasm.
+   Details in "Phase 2: Join" below.
 3. Multiple source videos in one session, polish, mobile layout.
 
 ## Screens
@@ -76,7 +75,7 @@ Layout is a fixed-height grid filling the viewport (no page scroll):
   the sidebar is a `#1C1C1E` panel with a 1px `#38383A` left border.
 - Top bar (56px): "‹ Home" text button on the left saves and returns home. Center: the file name
   in white and the total duration in secondary grey. Right: a secondary "Export JSON" pill and the
-  orange "Join N Clips (m:ss)" pill (disabled in phase 1 with a "Coming soon" tooltip).
+  orange "Join N Clips (m:ss)" pill, which opens the Join dialog (disabled when there are no clips).
 - Video: a `<video>` inside a black frame, `object-fit: contain`. Clicking anywhere on the
   video toggles play/pause. A play glyph fades in over the center for 400 ms on each toggle, as on
   YouTube. No hold gesture.
@@ -221,6 +220,89 @@ type SavedSession = {
 
 Save (debounced 300 ms) after every clip change and on back. Only one session is kept in
 phase 1. "Export JSON" in the top bar downloads this object as `<video name>.clips.json`.
+
+## Phase 2: Join
+
+Joining turns the marked clips into one mp4 the user downloads. It runs entirely in the browser
+with ffmpeg.wasm; no upload, no server.
+
+### Settled decisions
+
+- Library: `@ffmpeg/ffmpeg` 0.12.x with `@ffmpeg/core-mt` when `crossOriginIsolated` is true and
+  `@ffmpeg/core` (single thread) otherwise. Core `.js`/`.wasm`/`.worker.js` files are served from
+  the app itself (import with Vite `?url`), never from a CDN, so the app works offline and is not
+  at the mercy of a third-party host.
+- `vite.config.ts` sets `Cross-Origin-Opener-Policy: same-origin` and
+  `Cross-Origin-Embedder-Policy: require-corp` on both `server` and `preview` so the
+  multi-threaded core can use `SharedArrayBuffer` in dev. Document in the README that static hosts
+  need the same two headers (and that the single-thread fallback works without them).
+- The source file is never copied into wasm memory. Mount it with WORKERFS
+  (`ffmpeg.mount(FFFSType.WORKERFS, { files: [file] }, '/in')`) and read it as `/in/<name>`.
+  Game recordings are multi-gigabyte; `writeFile` of the whole source would crash the tab.
+- Segments to render are `mergeOverlaps(clips)` in start order, so overlapping clips are
+  included once. The output is the segments back to back with no transitions, titles or audio
+  changes.
+- Two modes, chosen in the Join dialog, default Fast:
+  - Fast: stream copy. Per segment `-ss <start> -to <end> -i /in/<name> -c copy
+    -avoid_negative_ts make_zero -movflags +faststart seg<i>.mp4`, then the concat demuxer with
+    `-c copy`. Cuts land on the keyframe at or before each start, so a clip may begin up to a
+    keyframe interval early (about one second on phone recordings). Takes seconds. Say this in the
+    dialog in plain words: "Fast: exact to the nearest keyframe, usually within a second."
+  - Precise: re-encode. Per segment `-ss <start> -to <end> -i /in/<name> -c:v libx264
+    -preset veryfast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 160k -movflags +faststart seg<i>.mp4`,
+    then concat with `-c copy`. Frame-accurate but slow in wasm; show the estimated time as
+    "about N minutes" computed from a measured encode rate after the first segment (before that,
+    assume 0.15× realtime).
+  - If a Fast concat fails (mixed codec parameters across segments is the usual cause), fall back
+    to Precise automatically and tell the user why.
+- Output name: `<video name without extension>-highlights.mp4`. Delivered as a Blob download
+  (`<a download>` click) and also kept in memory with a "Save again" button until the dialog
+  closes; revoke the object URL on close.
+- Cancel calls `ffmpeg.terminate()` and reloads the core on the next join. Closing the dialog
+  while a join runs asks "Stop joining?" inline (no `window.confirm`).
+- Memory ceiling: the output is assembled in MEMFS, so refuse to start when the estimated output
+  exceeds 1.5 GB (segment duration × source bitrate, from `file.size / duration`) and explain
+  that the selection must be shorter. For Fast mode the segment files are deleted from MEMFS as
+  soon as they are listed in the concat file; for Precise they are deleted after concat.
+
+### Join dialog
+
+Opened by the top-bar Join button. Centered dialog, 520px wide, same chrome as the shortcuts
+modal.
+
+1. Summary row: "N clips · m:ss total · about X MB" (size estimate from source bitrate).
+2. Mode: two radio cards, Fast (default) and Precise, each with a one-line explanation as above.
+3. Primary button "Join N clips". Secondary "Cancel".
+4. While running: a progress bar with the current segment ("Segment 3 of 12"), overall percent
+   from ffmpeg's progress events weighted by segment duration, the elapsed time, and a "Stop"
+   button. All editor shortcuts are inert while the dialog is open (the Dialog component already
+   does this).
+5. When done: "Saved <name>" with the final size, buttons "Save again" and "Done". The download
+   starts automatically once.
+6. On error: the ffmpeg log tail (last 20 lines) in a monospace block with a "Copy log" button, and
+   a "Try Precise" button when the failure was in Fast mode.
+
+### Code layout
+
+- `src/lib/join/plan.ts`: pure functions. `planSegments(clips)`, `segmentArgs(mode, seg, i, input)`,
+  `concatListContent(n)`, `concatArgs(output)`, `outputFileName(videoName)`,
+  `estimateOutputBytes(segments, fileSize, duration)`, `estimateSeconds(mode, segments, rate)`,
+  `weightedProgress(segments, index, ratio)`. Vitest covers each.
+- `src/lib/join/runner.ts`: the orchestrator. Takes an `FFmpegLike` interface (load, mount,
+  exec, readFile, deleteFile, writeFile, on, terminate) so the unit test uses a fake that records
+  calls and emits progress; the real adapter in `src/join/ffmpeg.ts` wraps `@ffmpeg/ffmpeg`.
+  Emits `{ phase, segmentIndex, progress, log }` events and resolves to a `Blob`.
+- `src/screens/editor/JoinDialog.tsx` and its CSS module. The Join button in the top bar opens it.
+
+### Verification
+
+- `pnpm test`, `pnpm lint`, `pnpm build` pass; the build must not inline the wasm (check that the
+  core files appear as separate assets in `dist/`).
+- In the browser: with the 30 s test video (`ffmpeg testsrc`, H.264), mark three clips, join in
+  Fast mode, download, and check with `ffprobe` that the result has one video stream, duration
+  equal to the merged segments within one keyframe interval, and plays in the browser. Repeat in
+  Precise mode and check the duration is within 0.1 s. Join a selection with two overlapping clips
+  and confirm the overlap appears once. Stop a Precise join mid-way and start another.
 
 ## Testing
 
