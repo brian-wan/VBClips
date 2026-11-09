@@ -43,6 +43,11 @@ export default defineConfig({
   plugins: [react(), serveFFmpegCoreUntransformed()],
   server: { headers: crossOriginIsolation },
   preview: { headers: crossOriginIsolation },
+  build: {
+    // The core's pthread worker is small enough to be inlined as a data: URL, which cannot be
+    // started as a same-origin worker. Keep every core file a separate asset.
+    assetsInlineLimit: (file) => (file.includes('/@ffmpeg/core') ? false : undefined),
+  },
   optimizeDeps: {
     // Pre-bundling breaks the worker and core URLs these packages resolve at runtime.
     exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util', '@ffmpeg/core', '@ffmpeg/core-mt'],
