@@ -12,6 +12,7 @@ import { ShortcutsModal } from '../components/ShortcutsModal'
 import { Toasts } from '../components/Toasts'
 import ui from '../components/ui.module.css'
 import { useEditorShortcuts } from '../hooks/useEditorShortcuts'
+import { useSessionPersistence } from '../hooks/useSessionPersistence'
 import { useToasts } from '../hooks/useToasts'
 import { useVideoPlayer } from '../hooks/useVideoPlayer'
 import {
@@ -23,7 +24,9 @@ import {
 } from '../lib/clips'
 import { currentClipIndex, nextClipIndex, prevClipIndex } from '../lib/navigation'
 import { canEndMark, initialSession, sessionReducer } from '../lib/session'
+import { buildSavedSession, exportFileName } from '../lib/persistence'
 import { formatTime } from '../lib/time'
+import { downloadJson } from '../download'
 import { unplayableMessage } from '../playable'
 import styles from './Editor.module.css'
 import { ClipEditor } from './editor/ClipEditor'
@@ -68,6 +71,11 @@ export function Editor({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const resumeAfterScrub = useRef(false)
+  const lastPlayhead = useRef(initialPlayhead)
+  useEffect(() => {
+    if (player.duration > 0) lastPlayhead.current = player.currentTime
+  }, [player.currentTime, player.duration])
+  const saveNow = useSessionPersistence(state, () => lastPlayhead.current)
 
   useEffect(() => () => URL.revokeObjectURL(src), [src])
 
@@ -139,7 +147,15 @@ export function Editor({
     setEditingId(clip.id)
   }, [])
 
-  const exportJson = useCallback(() => undefined, [])
+  const { video } = state
+  const getPlayhead = useCallback(() => lastPlayhead.current, [])
+  const exportJson = useCallback(() => {
+    if (!video) return
+    downloadJson(
+      exportFileName(video.name),
+      buildSavedSession(video, clips, getPlayhead(), Date.now()),
+    )
+  }, [video, clips, getPlayhead])
   const closePanel = useCallback(() => setPanelOpen(false), [])
 
   const selectedClip = selectedIndex >= 0 ? clips[selectedIndex] : null
@@ -191,7 +207,15 @@ export function Editor({
   return (
     <div className={styles.page}>
       <header className={styles.topBar}>
-        <button type="button" className={ui.iconButton} aria-label="Back" onClick={onExit}>
+        <button
+          type="button"
+          className={ui.iconButton}
+          aria-label="Back"
+          onClick={() => {
+            saveNow()
+            onExit()
+          }}
+        >
           <ChevronLeft />
         </button>
         <div className={styles.topActions}>
