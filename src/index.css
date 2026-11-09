@@ -1,5 +1,55 @@
-body {
+:root {
+  --color-bg: #000000;
+  --color-surface: #1c1c1e;
+  --color-surface-raised: #2c2c2e;
+  --color-separator: #38383a;
+  --color-text: #ffffff;
+  --color-text-secondary: #8e8e93;
+  --color-accent: #ff9f0a;
+  --color-accent-soft: rgba(255, 159, 10, 0.45);
+  --color-mark: #30d158;
+  --color-link: #0a84ff;
+  --color-destructive: #ff453a;
+  --color-overlap: #ffd60a;
+
+  --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, system-ui, sans-serif;
+  --font-title: 34px;
+  --font-label: 17px;
+  --font-caption: 15px;
+
+  --radius-pill: 999px;
+  --height-pill: 48px;
+  --size-icon-button: 44px;
+  --radius-sheet: 24px;
+  --pressed-opacity: 0.85;
+  --motion: 150ms ease-out;
+
+  color-scheme: dark;
+  font-family: var(--font-family);
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
   margin: 0;
-  background: #000;
-  color: #fff;
+  min-height: 100%;
+  background: var(--color-bg);
+}
+
+body {
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
 }

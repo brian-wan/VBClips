@@ -1,0 +1,95 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--height-pill);
+  padding: 0 22px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: #000;
+  font-size: var(--font-label);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--motion);
+  white-space: nowrap;
+}
+
+.pill:active:not(:disabled) {
+  opacity: var(--pressed-opacity);
+}
+
+.pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pillSmall {
+  composes: pill;
+  height: 32px;
+  padding: 0 14px;
+  font-size: var(--font-caption);
+}
+
+.pillSecondary {
+  composes: pill;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.pillDestructive {
+  composes: pill;
+  background: var(--color-destructive);
+  color: var(--color-text);
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: var(--size-icon-button);
+  height: var(--size-icon-button);
+  border: none;
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: opacity var(--motion);
+  flex-shrink: 0;
+}
+
+.iconButton:active:not(:disabled) {
+  opacity: var(--pressed-opacity);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.linkButton {
+  border: none;
+  background: none;
+  padding: 4px;
+  color: var(--color-link);
+  font-size: var(--font-label);
+  cursor: pointer;
+}
+
+.badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: #000;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}

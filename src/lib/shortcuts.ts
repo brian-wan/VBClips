@@ -1,0 +1,16 @@
+export const SHORTCUTS: readonly { keys: string; action: string }[] = [
+  { keys: 'Space', action: 'Mark start / mark end' },
+  { keys: 'K or click video', action: 'Play / pause' },
+  { keys: '← / →', action: 'Seek −5 s / +5 s' },
+  { keys: 'Shift+← / Shift+→', action: 'Seek −1 s / +1 s' },
+  { keys: 'J / L', action: 'Seek −10 s / +10 s' },
+  { keys: ', / .', action: 'Step one frame back / forward while paused (assume 30 fps)' },
+  { keys: '↑ / ↓ or [ / ]', action: 'Previous / next clip' },
+  { keys: 'S', action: 'Cycle sticky speed 1× / 1.5× / 2×' },
+  { keys: 'Hold pointer on right third of video', action: '2× while held' },
+  { keys: 'E', action: 'Edit selected clip' },
+  { keys: 'Delete / Backspace', action: 'Delete selected clip' },
+  { keys: 'Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z', action: 'Undo / redo' },
+  { keys: 'Esc', action: 'Cancel open marker, close sheet' },
+  { keys: '?', action: 'Show shortcuts' },
+]
