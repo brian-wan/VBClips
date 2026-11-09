@@ -48,30 +48,69 @@ pick the same file again. If the picked file's fingerprint does not match, show
 
 ### Editor (`/edit`)
 
-Layout (desktop first, max width 1100px, centered, black background):
+This is a desktop web app, not a phone app in a browser. Everything is driven by mouse and
+keyboard; there are no touch gestures, no slide-up sheets, no bottom-of-screen thumb controls.
+Use the whole viewport. Minimum supported width is 1024px; below that, the sidebar collapses to
+a toggle but nothing else changes.
 
-- Top bar: back chevron (left) saves the session and returns home. Right: orange pill
-  "Join N Clips (m:ss)" showing the clip count and total clipped duration; disabled in phase 1.
-  Next to it a "+" icon button (adds a 2 s clip at the playhead, selected, for manual edit) and a
-  list icon with the clip count that opens the Clips panel.
-- Video: 16:9 letterboxed area. A small centered "2× speed" label with a fast-forward icon
-  appears above the video while fast playback is active (held or sticky), otherwise hidden.
-- Scrubber: full-width track. Grey base, orange segments for saved clips, a lighter orange
-  segment from the open start marker to the playhead while marking, white round playhead.
-  Click to seek, drag the playhead to scrub (video pauses while dragging and resumes if it was
-  playing). Hover shows a time tooltip. Below the track: current time left (with an orange
-  "2×" tag when fast), "m:ss total" right.
-- Bottom controls, three columns: left an orange pill "‹ Clip N ›" (prev / next clip;
-  shows "‹ — ›" when no clips), center the big round mark button, right a play/pause button.
-- Clips panel: a slide-up sheet (desktop: right-side drawer) titled "Clips (N)" with a Done
-  button. Each row: "Clip N" in orange, "start → end" below in grey, duration right-aligned,
-  an orange "Edit" pill. Clicking the row seeks to the clip start and selects it. Rows are
-  sorted by start time and renumbered after any change.
-- Clip editor: opened by Edit. Shows start and end with ±1 s and ±0.1 s nudge buttons, a
-  "Set to playhead" button for each, a "Preview" button that plays only this clip, a red
-  "Delete" button, and Done. Start must stay ≥ 0, end ≤ duration, end − start ≥ 0.2 s;
-  nudges that would break a rule are disabled rather than clamped silently.
+Layout is a fixed-height grid filling the viewport (no page scroll):
 
+```
++-------------------------------------------------------------------------------+
+| Top bar: [‹ Home]  video-name.mp4 · 1:23:45     [Export JSON] [Join 12 Clips] |
++---------------------------------------------------------+---------------------+
+|                                                         | Clips (12)          |
+|   Video, letterboxed, fills the remaining height        | ------------------- |
+|   (max-height = viewport − top bar − scrubber −         | Clip 1   0:12 → 0:19|
+|    transport bar − gutters)                             | Clip 2   0:41 → 0:52|
+|                                                         | ...                 |
+|                                                         |                     |
++---------------------------------------------------------+ Selected clip       |
+| Scrubber (full width of the video column)               | editor (fixed at    |
++---------------------------------------------------------+ the sidebar bottom) |
+| Transport bar                                           |                     |
++---------------------------------------------------------+---------------------+
+```
+
+- Grid: `minmax(0, 1fr) 360px`, 24px gutters, 16px gaps between rows. Background `#000`;
+  the sidebar is a `#1C1C1E` panel with a 1px `#38383A` left border.
+- Top bar (56px): "‹ Home" text button on the left saves and returns home. Center: the file name
+  in white and the total duration in secondary grey. Right: a secondary "Export JSON" pill and the
+  orange "Join N Clips (m:ss)" pill (disabled in phase 1 with a "Coming soon" tooltip).
+- Video: a `<video>` inside a black frame, `object-fit: contain`. Clicking anywhere on the
+  video toggles play/pause. A play glyph fades in over the center for 400 ms on each toggle, as on
+  YouTube. No hold gesture.
+- Scrubber: 12px tall track, 24px hit area. Grey base, orange segments for saved clips, lighter
+  orange live segment while marking, white playhead with a 2px stem. Hover shows a time tooltip
+  above the pointer. Click to seek; drag the playhead to scrub (pause while dragging, resume if it
+  was playing). Clicking a clip segment selects that clip without seeking. The selected clip's
+  segment shows two 8px drag handles at its ends; dragging a handle trims start or end with the
+  same validation as the clip editor, and the video seeks to the handle time while dragging so the
+  frame is visible. Below the track: current time (left), total duration (right).
+- Transport bar (64px), three groups separated by space, every button with a tooltip naming its
+  key:
+  - Left: Play/Pause (44px round), then "−10s" and "+10s" icon buttons, then "‹ Clip N ›" as
+    three separate buttons (prev, label, next; the label opens the clip in the editor).
+  - Center: the mark button (56px round, green ring idle, orange with a stop square while
+    marking) with the caption "Space" under it in secondary grey.
+  - Right: a segmented speed control with three segments "1×", "1.5×", "2×"; the active segment
+    is filled orange. Next to it an "Add clip" button (plus icon) that inserts a 2 s clip at the
+    playhead and selects it, and a "?" button that opens the shortcuts modal.
+- Clips sidebar: header "Clips (N)" with total clipped duration right-aligned. The list fills the
+  remaining height and scrolls on its own. Each row (48px): "Clip N" in orange, "m:ss.t → m:ss.t"
+  in grey, duration right-aligned, an amber dot when the clip overlaps another. The selected row
+  has a `#2C2C2E` background. Single click selects and seeks to the clip start; double click starts
+  playback of that clip only. Rows have a small trash icon on hover (delete with Undo toast).
+  Empty state: "No clips yet. Press Space to mark the start of a point."
+- Selected clip editor: pinned to the bottom of the sidebar, shown whenever a clip is selected,
+  with the same fields as before: Start and End rows each with −1 s / −0.1 s / +0.1 s / +1 s nudges
+  and "Set to playhead", a Preview button, a red Delete button, and the clip length. Rules are
+  unchanged: start ≥ 0, end ≤ duration, end − start ≥ 0.2 s; disabled nudges, never silent clamps.
+- Toasts appear bottom-center over the video column.
+- The shortcuts modal is a centered dialog, closed by Esc, clicking outside, or its Done button.
+
+Spacing rules: nothing touches. Minimum 12px between any two controls, 24px between groups, 16px
+padding inside the sidebar. Use the layout's own whitespace rather than borders to separate groups.
 ## Marking model
 
 - The mark button is green with a hollow ring when idle. Pressing it (or Space) records the
@@ -84,18 +123,19 @@ Layout (desktop first, max width 1100px, centered, black background):
   overlapping rows in the Clips panel.
 - Undo (Cmd/Ctrl+Z) reverts the last clip change: add, delete, edit. Redo with Shift+Cmd/Ctrl+Z.
   Keep a bounded history (50).
-- Deleting a clip from the editor sheet or with Delete/Backspace shows a 5 s toast with Undo.
+- Deleting a clip from the sidebar editor, a row's trash icon, or Delete/Backspace shows a 5 s toast with Undo.
 
 ## Playback
 
-- Speed: hold the pointer (mouse or touch) on the right third of the video for 2× while held,
-  like TikTok; release returns to 1×. Clicking the speed label or pressing `S` cycles a sticky
-  speed 1× → 1.5× → 2× → 1×.
+- Speed: the segmented control in the transport bar sets 1×, 1.5× or 2×; `S` cycles through the
+  same three values. The speed persists across seeks and clip navigation until changed.
+  A "2× speed" badge with a fast-forward icon shows in the top-left corner of the video frame
+  while the speed is above 1×.
 - Seeking clamps to [0, duration]. All seeks go through one `seek(t)` helper.
 - Prev/next clip seeks to the target clip's start, selects it, and keeps the current play state.
   "Next" from after the last clip wraps to the first; "Prev" within the first 1 s of a clip goes
   to the previous clip, otherwise to the current clip's start (music-player rule).
-- Clicking the video (left two thirds) toggles play/pause.
+- Clicking the video toggles play/pause.
 
 ## Shortcuts
 
@@ -103,22 +143,49 @@ Layout (desktop first, max width 1100px, centered, black background):
 | --- | --- |
 | Space | Mark start / mark end |
 | K or click video | Play / pause |
+| Double-click clip row | Play that clip only |
 | ← / → | Seek −5 s / +5 s |
 | Shift+← / Shift+→ | Seek −1 s / +1 s |
 | J / L | Seek −10 s / +10 s |
 | , / . | Step one frame back / forward while paused (assume 30 fps) |
 | ↑ / ↓ or [ / ] | Previous / next clip |
 | S | Cycle sticky speed 1× / 1.5× / 2× |
-| Hold pointer on right third of video | 2× while held |
 | E | Edit selected clip |
 | Delete / Backspace | Delete selected clip |
 | Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z | Undo / redo |
-| Esc | Cancel open marker, close sheet |
+| Esc | Cancel open marker, close dialog, else deselect clip |
 | ? | Show shortcuts |
 
 Shortcuts are ignored while focus is in a text input. Space must not scroll the page or
 trigger a focused button; call `preventDefault` and keep focus off the control buttons after
 clicks (blur them) so Space always means "mark".
+
+## Design principles
+
+These apply on top of the tokens below. They are the difference between a tool that looks
+considered and one that looks generated.
+
+- Information design over decoration. The editor is scanned and operated, not read. State is
+  encoded in form, not only in color or text: the mark button changes shape (ring vs stop square),
+  the selected clip row changes background, an overlap gets a dot, the active speed segment is
+  filled. Every interactive element looks interactive, with a visible hover and focus state
+  (2px `#FF9F0A` outline offset 2px for keyboard focus, never `outline: none` without a replacement).
+- Hierarchy through type and space, not borders. One accent (orange) carries all primary actions
+  and clip markers; semantic colors (green mark, red delete, amber overlap) are separate from the
+  accent and never used for emphasis. Separate groups with whitespace first; use a 1px separator
+  only where whitespace alone fails (the sidebar edge, list rows).
+- Numbers line up. All times, durations and counts use `font-variant-numeric: tabular-nums` so
+  the scrubber readout and clip rows do not jitter as values change.
+- Repeated elements are identical. Clip rows share the same height, padding, baselines and the
+  same position for every element; nudge buttons in the editor share one width.
+- Spacing comes from layout. Use flex/grid with `gap`, never per-element margins between siblings.
+  Sizes come from a 4px grid: 4, 8, 12, 16, 24, 32.
+- Motion is functional. 150 ms ease-out for state changes, 400 ms fade for the play glyph overlay,
+  nothing bouncy, and everything behind `prefers-reduced-motion: reduce` collapses to instant.
+- Copy is part of the design. Buttons say what happens ("Mark start", "Delete clip"), toasts say
+  what happened ("Clip 3 deleted"), errors say what to do next. Short, active, no apologies.
+- Avoid the generic. No gradient heroes, no emoji in UI, no card chrome on every block, no
+  identical rounded corners everywhere. The video and the scrubber are the hero; chrome stays quiet.
 
 ## Visual design tokens
 
@@ -132,7 +199,7 @@ Dark iOS look, copied from the app screenshots.
 - Font: `-apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif`.
   Title 34px bold on home; control labels 17px semibold; captions 15px.
 - Pills: fully rounded (999px), 48px tall for primary actions. Icon buttons are 44px circles on
-  `#1C1C1E`. Sheets have 24px top radius and a drag handle bar.
+  `#1C1C1E`. Dialogs and the sidebar editor card have 16px radius. Tooltips are `#2C2C2E` with 13px text.
 - Motion: 150 ms ease-out for state changes; no bouncy animations.
 
 ## Time formatting
@@ -153,7 +220,7 @@ type SavedSession = {
 ```
 
 Save (debounced 300 ms) after every clip change and on back. Only one session is kept in
-phase 1. "Export JSON" in the Clips panel downloads this object as `<video name>.clips.json`.
+phase 1. "Export JSON" in the top bar downloads this object as `<video name>.clips.json`.
 
 ## Testing
 
@@ -165,7 +232,9 @@ phase 1. "Export JSON" in the Clips panel downloads this object as `<video name>
 ## Done means
 
 - `pnpm install && pnpm dev` serves the app; `pnpm test`, `pnpm lint`, `pnpm build` pass.
-- In the browser: load a video, mark three clips with Space, navigate them with the pill and
-  arrow keys, edit one, delete one and undo it, reload the page, continue the session by picking
-  the same file, and see the same clips.
+- In the browser at 1440×900 and 1024×768: load a video, mark three clips with Space, navigate
+  them with the transport buttons and arrow keys, trim one by dragging a scrubber handle, edit one
+  in the sidebar editor, delete one and undo it, change speed with the segmented control, reload
+  the page, continue the session by picking the same file, and see the same clips. No page scroll
+  at either size.
 - `README.md` documents setup and the shortcut table.
