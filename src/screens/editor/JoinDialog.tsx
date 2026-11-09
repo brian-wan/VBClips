@@ -46,11 +46,13 @@ type State =
       fellBack: boolean
       startedAt: number
       sample: RateSample | null
+      loadingLog: string | null
     }
   | { kind: 'done'; result: Result }
   | { kind: 'error'; failure: Failure }
 
 const LOG_TAIL = 20
+const SLOW_LOAD_SECONDS = 5
 
 const MODES: { mode: JoinMode; title: string; detail: (estimate: string) => string }[] = [
   {
@@ -108,18 +110,21 @@ export function JoinDialog({ file, clips, duration, onClose }: Props) {
     let lastIndex = -1
     let encodeStart = startedAt
     let sample: RateSample | null = null
+    let loadingLog: string | null = null
     setState({
       kind: 'running',
       fellBack,
       startedAt,
       sample,
+      loadingLog,
       event: { phase: 'loading', mode: joinMode, segmentIndex: 0, progress: 0 },
     })
 
     // The encode rate is measured from the first segment's start, so loading the core and any
     // Fast attempt before a fallback do not skew the Precise estimate.
     const onEvent = (event: JoinEvent) => {
-      if (event.log && event.phase !== 'fallback') return
+      if (event.log && event.phase === 'loading') loadingLog = event.log
+      else if (event.log && event.phase !== 'fallback') return
       if (event.phase === 'fallback') {
         fellBack = true
         sample = null
@@ -134,7 +139,7 @@ export function JoinDialog({ file, clips, duration, onClose }: Props) {
             seconds: (performance.now() - encodeStart) / 1000,
           }
       }
-      setState({ kind: 'running', event, fellBack, startedAt, sample })
+      setState({ kind: 'running', event, fellBack, startedAt, sample, loadingLog })
     }
 
     try {
@@ -251,6 +256,7 @@ export function JoinDialog({ file, clips, duration, onClose }: Props) {
             elapsed={(now - state.startedAt) / 1000}
             remaining={remainingSeconds(state.event, total, state.sample)}
             fellBack={state.fellBack}
+            loadingLog={state.loadingLog}
             confirmingStop={confirmingStop !== null}
             onStop={() => setConfirmingStop('stop')}
             onConfirmStop={stop}
@@ -343,6 +349,7 @@ type ProgressProps = {
   elapsed: number
   remaining: number | null
   fellBack: boolean
+  loadingLog: string | null
   confirmingStop: boolean
   onStop: () => void
   onConfirmStop: () => void
@@ -355,6 +362,7 @@ function Progress({
   elapsed,
   remaining,
   fellBack,
+  loadingLog,
   confirmingStop,
   onStop,
   onConfirmStop,
@@ -395,6 +403,14 @@ function Progress({
             <span className={styles.muted}>{formatEstimate(remaining)} left</span>
           )}
         </div>
+        {event.phase === 'loading' && (
+          <div className={styles.loading}>
+            {loadingLog && <span className={styles.loadingLog}>{loadingLog}</span>}
+            {elapsed >= SLOW_LOAD_SECONDS && (
+              <span className={styles.muted}>First load downloads about 30 MB</span>
+            )}
+          </div>
+        )}
       </div>
       <div className={styles.actions}>
         {confirmingStop ? (
