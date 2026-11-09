@@ -64,7 +64,6 @@ export function Editor({
   const videoRef = useRef<HTMLVideoElement>(null)
   const player = useVideoPlayer(videoRef)
   const { toasts, show: showToast, dismiss: dismissToast } = useToasts()
-  const [src] = useState(() => URL.createObjectURL(file))
   const [stickySpeed, setStickySpeed] = useState(1)
   const [holding, setHolding] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
@@ -77,7 +76,17 @@ export function Editor({
   }, [player.currentTime, player.duration])
   const saveNow = useSessionPersistence(state, () => lastPlayhead.current)
 
-  useEffect(() => () => URL.revokeObjectURL(src), [src])
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const url = URL.createObjectURL(file)
+    video.src = url
+    return () => {
+      video.removeAttribute('src')
+      video.load()
+      URL.revokeObjectURL(url)
+    }
+  }, [file])
 
   const rate = holding ? HOLD_SPEED : stickySpeed
   useEffect(() => {
@@ -259,7 +268,6 @@ export function Editor({
         <video
           ref={videoRef}
           className={styles.video}
-          src={src}
           playsInline
           preload="auto"
           onLoadedMetadata={(e) => {
@@ -268,7 +276,9 @@ export function Editor({
             video.playbackRate = rate
             if (initialPlayhead > 0) player.seek(initialPlayhead)
           }}
-          onError={() => onError(unplayableMessage(file.name))}
+          onError={(e) => {
+            if (e.currentTarget.error) onError(unplayableMessage(file.name))
+          }}
         />
         <div
           className={styles.videoHit}
