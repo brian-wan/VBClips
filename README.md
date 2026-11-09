@@ -118,5 +118,5 @@ Shortcuts are ignored while focus is in a text input.
   reducer, persistence, and the join plan and runner in `src/lib/join/`. Unit tested.
 - `src/join/ffmpeg.ts`: the `@ffmpeg/ffmpeg` adapter the join runner uses in the browser.
 - `src/hooks/`: video player, keyboard shortcuts, persistence, toasts, routing.
-- `src/screens/`: Home and Editor screens, with the editor's scrubber, transport bar, clip list
+- `src/screens/`: Home and Editor screens, with the editor's scrubber, transport bar, clip list,
   clip editor and Join dialog in `src/screens/editor/`; `src/components/`: shared UI.
