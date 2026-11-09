@@ -23,16 +23,28 @@ export function segmentFileName(index: number): string {
 
 const timeArg = (seconds: number) => seconds.toFixed(3)
 
+/**
+ * The multi-thread core preallocates 32 pthread workers and cannot start more while ffmpeg is
+ * running, so default thread counts (about one per core for the decoder and 1.5 per core for
+ * libx264) deadlock on machines with many cores. Cap both for re-encodes.
+ */
+export const PRECISE_THREADS = '4'
+
 export function segmentArgs(mode: JoinMode, seg: Segment, index: number, input: string): string[] {
   const cut = ['-ss', timeArg(seg.start), '-to', timeArg(seg.end), '-i', input]
-  const codec =
-    mode === 'fast'
-      ? ['-c', 'copy', '-avoid_negative_ts', 'make_zero']
-      : [
-          ...['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p'],
-          ...['-c:a', 'aac', '-b:a', '160k'],
-        ]
-  return [...cut, ...codec, '-movflags', '+faststart', segmentFileName(index)]
+  if (mode === 'fast') {
+    return [
+      ...cut,
+      ...['-c', 'copy', '-avoid_negative_ts', 'make_zero'],
+      ...['-movflags', '+faststart', segmentFileName(index)],
+    ]
+  }
+  return [
+    ...['-threads', PRECISE_THREADS, ...cut],
+    ...['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p'],
+    ...['-c:a', 'aac', '-b:a', '160k', '-threads', PRECISE_THREADS],
+    ...['-movflags', '+faststart', segmentFileName(index)],
+  ]
 }
 
 export function concatListContent(count: number): string {

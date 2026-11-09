@@ -24,6 +24,7 @@ import { unplayableMessage } from '../playable'
 import styles from './Editor.module.css'
 import { ClipEditor } from './editor/ClipEditor'
 import { ClipsList } from './editor/ClipsList'
+import { JoinDialog } from './editor/JoinDialog'
 import { Scrubber } from './editor/Scrubber'
 import { TransportBar } from './editor/TransportBar'
 
@@ -59,6 +60,7 @@ export function Editor({
   const { toasts, show: showToast, dismiss: dismissToast } = useToasts()
   const [speed, setSpeed] = useState(1)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [joinOpen, setJoinOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [flash, setFlash] = useState<Flash | null>(null)
   const resumeAfterDrag = useRef(false)
@@ -228,8 +230,20 @@ export function Editor({
           >
             Export JSON
           </button>
-          <span className={`${ui.tip} ${ui.tipBelow} ${ui.tipEnd}`} data-tip="Coming soon">
-            <button type="button" className={`${ui.pill} ${styles.topPill}`} disabled>
+          <span
+            className={`${ui.tip} ${ui.tipBelow} ${ui.tipEnd}`}
+            data-tip={clips.length === 0 ? 'Mark a clip first' : 'Join the clips into one video'}
+          >
+            <button
+              type="button"
+              className={`${ui.pill} ${styles.topPill}`}
+              disabled={clips.length === 0}
+              onClick={(e) => {
+                e.currentTarget.blur()
+                player.pause()
+                setJoinOpen(true)
+              }}
+            >
               Join {clips.length} {clipWord} ({formatTime(totalClipped)})
             </button>
           </span>
@@ -344,6 +358,14 @@ export function Editor({
       </main>
 
       {helpOpen && <ShortcutsModal onClose={() => setHelpOpen(false)} />}
+      {joinOpen && (
+        <JoinDialog
+          file={file}
+          clips={clips}
+          duration={duration}
+          onClose={() => setJoinOpen(false)}
+        />
+      )}
     </div>
   )
 }
