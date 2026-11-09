@@ -1,0 +1,258 @@
+/*
+ * Three groups. The outer columns are at least as wide as their content and otherwise share the
+ * leftover space equally, so the mark button sits in the exact center whenever it fits.
+ */
+.bar {
+  --secondary-size: var(--size-icon-button);
+  --group-gap: 24px;
+
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
+  align-items: center;
+  column-gap: var(--group-gap);
+  min-height: 64px;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: var(--group-gap);
+}
+
+.cluster {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.end {
+  justify-content: flex-end;
+}
+
+.play {
+  color: var(--color-text);
+}
+
+.secondary {
+  width: var(--secondary-size);
+  height: var(--secondary-size);
+}
+
+/* Prev / label / next: three buttons that read as one control, like the speed segments. */
+.clipNav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--secondary-size);
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+}
+
+.navArrow,
+.navLabel,
+.segment {
+  height: calc(var(--secondary-size) - 8px);
+  border: none;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background-color var(--motion),
+    color var(--motion),
+    opacity var(--motion);
+}
+
+.navArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--secondary-size) - 8px);
+  padding: 0;
+  border-radius: 50%;
+}
+
+.navLabel {
+  min-width: 72px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  color: var(--color-accent);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.navArrow:hover:not(:disabled),
+.navLabel:hover:not(:disabled),
+.segment:hover:not(.segmentActive) {
+  background: var(--color-surface-raised);
+}
+
+.navArrow:active:not(:disabled),
+.navLabel:active:not(:disabled),
+.segment:active {
+  opacity: var(--pressed-opacity);
+}
+
+.navArrow:disabled,
+.navLabel:disabled {
+  color: var(--color-text-secondary);
+  cursor: default;
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-mark);
+  box-shadow: 0 0 20px rgba(48, 209, 88, 0.4);
+  cursor: pointer;
+  transition:
+    background-color var(--motion),
+    box-shadow var(--motion),
+    filter var(--motion),
+    opacity var(--motion);
+}
+
+.mark:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 0 28px rgba(48, 209, 88, 0.6);
+}
+
+.mark:active {
+  opacity: var(--pressed-opacity);
+}
+
+.marking,
+.marking:hover {
+  background: var(--color-accent);
+  box-shadow: 0 0 24px rgba(255, 159, 10, 0.5);
+}
+
+.ring {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.92);
+  border-radius: 50%;
+}
+
+.stop {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--color-text);
+}
+
+.caption {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+}
+
+.segmented {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--secondary-size);
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+}
+
+.segment {
+  min-width: 48px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.segmentActive {
+  background: var(--color-accent);
+  color: #000;
+  cursor: default;
+}
+
+.addClip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: var(--secondary-size);
+  min-width: var(--secondary-size);
+  padding: 0 16px 0 12px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--motion),
+    opacity var(--motion);
+}
+
+.addClip:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.addClip:active:not(:disabled) {
+  opacity: var(--pressed-opacity);
+}
+
+.addClip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.question {
+  font-size: var(--font-label);
+  font-weight: 600;
+  line-height: 1;
+}
+
+/*
+ * The spec's full-size controls need about 690 px; at a 1024 px viewport the video column is
+ * 616 px. Below 1280 px the secondary controls drop to 36 px, the group gap to 16 px, and
+ * "Add clip" to its icon so the bar keeps one row.
+ */
+@media (max-width: 1279px) {
+  .bar {
+    --secondary-size: 36px;
+    --group-gap: 16px;
+  }
+
+  .addClip {
+    padding: 0;
+  }
+
+  .addLabel {
+    display: none;
+  }
+
+  .segment {
+    min-width: 36px;
+    padding: 0 4px;
+  }
+
+  .navLabel {
+    min-width: 64px;
+  }
+}

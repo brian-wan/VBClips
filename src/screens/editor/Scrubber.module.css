@@ -1,11 +1,13 @@
-.wrap {
-  padding: 8px 0 0;
+.scrubber {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  user-select: none;
 }
 
 .hitArea {
   position: relative;
-  height: 28px;
-  cursor: pointer;
+  height: 24px;
   touch-action: none;
 }
 
@@ -13,12 +15,16 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: 50%;
-  height: 6px;
-  transform: translateY(-50%);
-  border-radius: var(--radius-pill);
+  top: 6px;
+  height: 12px;
+  border-radius: 3px;
   background: var(--color-separator);
   overflow: hidden;
+  transition: background-color var(--motion);
+}
+
+.hitArea:hover .track {
+  background: var(--color-hover);
 }
 
 .clip,
@@ -31,35 +37,84 @@
 
 .clip {
   background: var(--color-accent);
+  opacity: 0.8;
+  transition: opacity var(--motion);
+}
+
+.clipSelected {
+  opacity: 1;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 
 .live {
   background: var(--color-accent-soft);
 }
 
+.handle {
+  position: absolute;
+  top: 2px;
+  width: 8px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--color-text);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  transform: translateX(-50%);
+  pointer-events: none;
+  transition: transform var(--motion);
+}
+
+.handle::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  width: 2px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--color-accent);
+}
+
+.handleActive {
+  transform: translateX(-50%) scaleY(1.2);
+}
+
 .playhead {
   position: absolute;
-  top: 50%;
-  width: 16px;
-  height: 16px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-text);
+  transform: translateX(-50%);
+  pointer-events: none;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+}
+
+.playhead::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--color-text);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
+  transform: translateX(-50%);
 }
 
 .tooltip {
   position: absolute;
-  bottom: 100%;
-  padding: 3px 8px;
-  border-radius: 8px;
+  bottom: calc(100% + 8px);
+  padding: 4px 8px;
+  border-radius: 6px;
   background: var(--color-surface-raised);
-  font-size: 13px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  font-size: var(--font-tooltip);
   font-variant-numeric: tabular-nums;
   transform: translateX(-50%);
   pointer-events: none;
   white-space: nowrap;
+  z-index: 5;
 }
 
 .times {
@@ -68,14 +123,4 @@
   color: var(--color-text-secondary);
   font-size: var(--font-caption);
   font-variant-numeric: tabular-nums;
-}
-
-.rate {
-  margin-left: 8px;
-  padding: 1px 6px;
-  border-radius: var(--radius-pill);
-  background: var(--color-accent);
-  color: #000;
-  font-size: 12px;
-  font-weight: 700;
 }

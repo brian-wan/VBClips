@@ -1,208 +1,213 @@
+/* Fixed-height grid filling the viewport. Only the clip list scrolls. */
 .page {
-  display: flex;
-  flex-direction: column;
-  max-width: 1100px;
-  min-height: 100vh;
-  margin: 0 auto;
-  padding: 16px 24px 24px;
+  display: grid;
+  grid-template-rows: 56px minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--color-bg);
-  user-select: none;
 }
 
 .topBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+  padding: 0 24px;
+}
+
+.topStart,
+.topEnd {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
 
-.topActions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.topEnd {
+  justify-content: flex-end;
 }
 
-.joinWrap {
-  position: relative;
-  display: inline-flex;
-}
-
-.joinWrap::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 50%;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: var(--color-surface-raised);
-  color: var(--color-text);
-  font-size: 13px;
-  white-space: nowrap;
-  transform: translateX(-50%);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--motion);
-  z-index: 5;
-}
-
-.joinWrap:hover::after {
-  opacity: 1;
-}
-
-.speedLabel {
+.homeButton {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  align-self: center;
-  margin: 6px 0;
-  padding: 4px 12px;
+  gap: 4px;
+  height: 36px;
+  padding: 0 12px 0 8px;
   border: none;
-  border-radius: var(--radius-pill);
-  background: var(--color-surface);
+  border-radius: 8px;
+  background: none;
   color: var(--color-accent);
-  font-size: var(--font-caption);
-  font-weight: 600;
-  cursor: pointer;
-  visibility: hidden;
-  opacity: 0;
-  transition: opacity var(--motion);
-}
-
-.speedVisible {
-  visibility: visible;
-  opacity: 1;
-}
-
-.videoFrame {
-  position: relative;
-  align-self: center;
-  width: min(100%, calc((100vh - 250px) * 16 / 9));
-  min-width: 320px;
-  aspect-ratio: 16 / 9;
-  background: #000;
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.video {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-}
-
-.videoHit {
-  position: absolute;
-  inset: 0;
-  cursor: pointer;
-  touch-action: none;
-}
-
-.controls {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  margin-top: 12px;
-}
-
-.navPill {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  height: var(--height-pill);
-  border-radius: var(--radius-pill);
-  background: var(--color-accent);
-  color: #000;
   font-size: var(--font-label);
   font-weight: 600;
-  white-space: nowrap;
-}
-
-.navPill > span {
-  min-width: 64px;
-  text-align: center;
-}
-
-.navPill button {
-  height: 100%;
-  padding: 0 16px;
-  border: none;
-  background: none;
-  color: #000;
-  font-size: 24px;
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  transition: opacity var(--motion);
-}
-
-.navPill button:active:not(:disabled) {
-  opacity: var(--pressed-opacity);
-}
-
-.navPill button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.markButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 76px;
-  height: 76px;
-  border: none;
-  border-radius: 50%;
-  background: var(--color-mark);
-  box-shadow: 0 0 24px rgba(48, 209, 88, 0.45);
   cursor: pointer;
   transition:
-    background var(--motion),
-    box-shadow var(--motion),
+    background-color var(--motion),
     opacity var(--motion);
 }
 
-.markButton:active {
-  opacity: var(--pressed-opacity);
-}
-
-.marking {
-  background: var(--color-accent);
-  box-shadow: 0 0 24px rgba(255, 159, 10, 0.45);
-}
-
-.ring {
-  width: 54px;
-  height: 54px;
-  border: 4px solid rgba(255, 255, 255, 0.9);
-  border-radius: 50%;
-}
-
-.stop {
-  width: 24px;
-  height: 24px;
-  border-radius: 5px;
-  background: var(--color-text);
-}
-
-.playCell {
-  justify-self: end;
-}
-
-.playButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  border: none;
-  border-radius: 50%;
+.homeButton:hover {
   background: var(--color-surface);
-  color: var(--color-text);
-  cursor: pointer;
-  transition: opacity var(--motion);
 }
 
-.playButton:active {
+.homeButton:active {
   opacity: var(--pressed-opacity);
+}
+
+.fileInfo {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--font-caption);
+}
+
+.fileName {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fileDuration {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 40px rather than 48px so the pills keep clear of the 56px top bar's edges. */
+.topEnd .topPill {
+  height: 40px;
+  padding: 0 16px;
+  font-size: var(--font-caption);
+}
+
+.sidebarToggle {
+  display: none;
+}
+
+.main {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  min-height: 0;
+}
+
+.videoColumn {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 24px 24px;
+  user-select: none;
+}
+
+.stage {
+  position: relative;
+  min-height: 0;
+}
+
+.videoFrame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #000;
+  cursor: pointer;
+}
+
+.video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.speedBadge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.65);
+  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.flash {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--color-text);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  animation: flash var(--motion-glyph) forwards;
+}
+
+@keyframes flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.sidebar {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  min-height: 0;
+  padding: 16px;
+  border-left: 1px solid var(--color-separator);
+  background: var(--color-surface);
+}
+
+/* Below the 1024px minimum the sidebar becomes an overlay behind a top-bar toggle. */
+@media (max-width: 1023px) {
+  .main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebarToggle {
+    display: inline-flex;
+  }
+
+  .sidebar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    width: 360px;
+    box-shadow: -16px 0 32px rgba(0, 0, 0, 0.5);
+    visibility: hidden;
+    transform: translateX(16px);
+    opacity: 0;
+    transition:
+      opacity var(--motion),
+      transform var(--motion),
+      visibility var(--motion);
+  }
+
+  .sidebarOpen .sidebar {
+    visibility: visible;
+    transform: none;
+    opacity: 1;
+  }
 }

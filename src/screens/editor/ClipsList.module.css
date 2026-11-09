@@ -1,0 +1,129 @@
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 8px;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-label);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.total {
+  color: var(--color-text-secondary);
+  font-size: var(--font-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  overscroll-behavior: contain;
+}
+
+/* One fixed column per element so every row lines up exactly. */
+.row {
+  display: grid;
+  grid-template-columns: 64px 8px minmax(0, 1fr) auto 28px;
+  align-items: center;
+  column-gap: 8px;
+  height: 48px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--color-separator);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--motion);
+}
+
+.row:hover {
+  background: rgba(44, 44, 46, 0.6);
+}
+
+.row.selected {
+  background: var(--color-surface-raised);
+  border-bottom-color: transparent;
+  border-radius: 8px;
+}
+
+.name {
+  color: var(--color-accent);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.dotCell {
+  display: flex;
+  align-items: center;
+}
+
+.overlap {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-overlap);
+}
+
+.range {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.duration {
+  font-size: var(--font-caption);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.trash {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--motion),
+    color var(--motion),
+    background-color var(--motion);
+}
+
+.row:hover .trash,
+.trash:focus-visible {
+  opacity: 1;
+}
+
+.trash:hover {
+  background: var(--color-hover);
+  color: var(--color-destructive);
+}
+
+.trash:active {
+  opacity: var(--pressed-opacity);
+}
+
+.empty {
+  align-self: start;
+  margin: 0;
+  padding: 24px 8px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-caption);
+  line-height: 1.4;
+}

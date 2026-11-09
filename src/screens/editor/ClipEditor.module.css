@@ -1,43 +1,110 @@
-.edge {
-  padding: 14px 0;
-  border-bottom: 1px solid var(--color-separator);
-}
-
-.edgeHeader {
+.card {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border-radius: var(--radius-card);
+  background: var(--color-surface-raised);
+  animation: enter var(--motion);
+}
+
+.header {
+  display: flex;
   align-items: baseline;
-  margin-bottom: 10px;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.edgeLabel {
-  color: var(--color-text-secondary);
-  font-size: var(--font-caption);
-}
-
-.edgeValue {
-  font-size: 22px;
+.title {
+  margin: 0;
+  color: var(--color-accent);
+  font-size: var(--font-label);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-.nudges {
+.length {
+  color: var(--color-text-secondary);
+  font-size: var(--font-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.edge {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.edgeHeader {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.edgeLabel {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.edgeValue {
+  font-size: var(--font-label);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.setPlayhead {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-link);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion),
+    opacity var(--motion);
+}
+
+.setPlayhead:hover:not(:disabled) {
+  background: var(--color-separator);
+}
+
+.setPlayhead:active:not(:disabled) {
+  opacity: var(--pressed-opacity);
+}
+
+.setPlayhead:disabled {
+  color: var(--color-text-secondary);
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Four equal columns: every nudge button has the same width. */
+.nudges {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 
 .nudge {
-  height: 36px;
-  padding: 0 14px;
+  height: 32px;
+  padding: 0;
   border: none;
-  border-radius: var(--radius-pill);
-  background: var(--color-surface-raised);
+  border-radius: 8px;
+  background: var(--color-separator);
   color: var(--color-text);
-  font-size: var(--font-caption);
+  font-size: 13px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: opacity var(--motion);
+  transition:
+    background-color var(--motion),
+    opacity var(--motion);
+}
+
+.nudge:hover:not(:disabled) {
+  background: #48484a;
 }
 
 .nudge:active:not(:disabled) {
@@ -49,18 +116,30 @@
   cursor: default;
 }
 
-.length {
-  margin: 14px 0;
-  color: var(--color-text-secondary);
-  font-size: var(--font-caption);
-  text-align: center;
-}
-
 .actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
 
-.actions > * {
-  flex: 1;
+/* Doubled selectors outrank the shared pill classes regardless of stylesheet order. */
+.actions .action {
+  height: 40px;
+  padding: 0 16px;
+  font-size: var(--font-caption);
+}
+
+.actions .preview {
+  background: var(--color-separator);
+}
+
+.actions .preview:hover:not(:disabled) {
+  background: #48484a;
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }

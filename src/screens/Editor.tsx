@@ -1,13 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-  type PointerEvent,
-} from 'react'
-import { ChevronLeft, FastForward, ListIcon, PauseIcon, PlayIcon, Plus } from '../components/Icons'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { ChevronLeft, FastForward, ListIcon, PauseIcon, PlayIcon } from '../components/Icons'
 import { ShortcutsModal } from '../components/ShortcutsModal'
 import { Toasts } from '../components/Toasts'
 import ui from '../components/ui.module.css'
@@ -25,13 +17,15 @@ import {
 import { currentClipIndex, nextClipIndex, prevClipIndex } from '../lib/navigation'
 import { canEndMark, initialSession, sessionReducer } from '../lib/session'
 import { buildSavedSession, exportFileName } from '../lib/persistence'
+import { nextSpeed } from '../lib/speed'
 import { formatTime } from '../lib/time'
 import { downloadJson } from '../download'
 import { unplayableMessage } from '../playable'
 import styles from './Editor.module.css'
 import { ClipEditor } from './editor/ClipEditor'
-import { ClipsPanel } from './editor/ClipsPanel'
+import { ClipsList } from './editor/ClipsList'
 import { Scrubber } from './editor/Scrubber'
+import { TransportBar } from './editor/TransportBar'
 
 type Props = {
   file: File
@@ -41,9 +35,7 @@ type Props = {
   onError: (message: string) => void
 }
 
-const STICKY_SPEEDS = [1, 1.5, 2]
-const HOLD_SPEED = 2
-const NO_CLIPS_LABEL = '—'
+type Flash = { id: number; playing: boolean }
 
 const newId = () => crypto.randomUUID()
 
@@ -62,14 +54,14 @@ export function Editor({
     }),
   )
   const videoRef = useRef<HTMLVideoElement>(null)
+  const editorRef = useRef<HTMLElement>(null)
   const player = useVideoPlayer(videoRef)
   const { toasts, show: showToast, dismiss: dismissToast } = useToasts()
-  const [stickySpeed, setStickySpeed] = useState(1)
-  const [holding, setHolding] = useState(false)
-  const [panelOpen, setPanelOpen] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [speed, setSpeed] = useState(1)
   const [helpOpen, setHelpOpen] = useState(false)
-  const resumeAfterScrub = useRef(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [flash, setFlash] = useState<Flash | null>(null)
+  const resumeAfterDrag = useRef(false)
   const lastPlayhead = useRef(initialPlayhead)
   useEffect(() => {
     if (player.duration > 0) lastPlayhead.current = player.currentTime
@@ -88,28 +80,41 @@ export function Editor({
     }
   }, [file])
 
-  const rate = holding ? HOLD_SPEED : stickySpeed
   useEffect(() => {
-    if (videoRef.current) videoRef.current.playbackRate = rate
-  }, [rate])
+    if (videoRef.current) videoRef.current.playbackRate = speed
+  }, [speed])
 
-  const { clips, selectedId, openStart } = state
+  const { clips, selectedId, openStart, video } = state
   const duration = player.duration
   const overlapping = useMemo(() => findOverlappingIds(clips), [clips])
   const totalClipped = useMemo(() => totalClippedDuration(clips), [clips])
   const selectedIndex = clips.findIndex((c) => c.id === selectedId)
-  const editingIndex = clips.findIndex((c) => c.id === editingId)
-  const editingClip = editingIndex >= 0 ? clips[editingIndex] : null
-  const pillIndex =
+  const selectedClip = selectedIndex >= 0 ? clips[selectedIndex] : null
+  const labelIndex =
     selectedIndex >= 0 ? selectedIndex : currentClipIndex(clips, player.currentTime, null)
 
   const now = () => videoRef.current?.currentTime ?? player.currentTime
+
+  const togglePlay = () => {
+    const playing = videoRef.current?.paused ?? false
+    player.toggle()
+    setFlash((f) => ({ id: (f?.id ?? 0) + 1, playing }))
+  }
 
   const goToClip = (index: number) => {
     const clip = clips[index]
     if (!clip) return
     player.seek(clip.start)
     dispatch({ type: 'select', id: clip.id })
+  }
+
+  const openInEditor = () => {
+    const index = selectedIndex >= 0 ? selectedIndex : Math.max(labelIndex, 0)
+    const clip = clips[index]
+    if (!clip) return
+    if (clip.id !== selectedId) goToClip(index)
+    setSidebarOpen(true)
+    requestAnimationFrame(() => editorRef.current?.focus({ preventScroll: true }))
   }
 
   const mark = () => {
@@ -129,256 +134,216 @@ export function Editor({
     dispatch({ type: 'addClip', clip: { id: newId(), ...span } })
   }
 
-  const deleteClip = (clip: Clip) => {
-    const number = clips.findIndex((c) => c.id === clip.id) + 1
-    dispatch({ type: 'deleteClip', id: clip.id })
-    if (editingId === clip.id) setEditingId(null)
-    showToast(`Clip ${number} deleted`, {
-      timeout: 5000,
-      action: { label: 'Undo', onClick: () => dispatch({ type: 'undo' }) },
-    })
-  }
+  const deleteClip = useCallback(
+    (clip: Clip) => {
+      const number = clips.findIndex((c) => c.id === clip.id) + 1
+      dispatch({ type: 'deleteClip', id: clip.id })
+      showToast(`Clip ${number} deleted`, {
+        timeout: 5000,
+        action: { label: 'Undo', onClick: () => dispatch({ type: 'undo' }) },
+      })
+    },
+    [clips, showToast],
+  )
 
-  const cycleSpeed = () =>
-    setStickySpeed((s) => STICKY_SPEEDS[(STICKY_SPEEDS.indexOf(s) + 1) % STICKY_SPEEDS.length])
-
-  const { seek } = player
-  const selectFromPanel = useCallback(
+  const { seek, playRange } = player
+  const selectFromList = useCallback(
     (clip: Clip) => {
       seek(clip.start)
       dispatch({ type: 'select', id: clip.id })
     },
     [seek],
   )
+  const playFromList = useCallback(
+    (clip: Clip) => {
+      dispatch({ type: 'select', id: clip.id })
+      playRange(clip.start, clip.end)
+    },
+    [playRange],
+  )
 
-  const editFromPanel = useCallback((clip: Clip) => {
-    dispatch({ type: 'select', id: clip.id })
-    setEditingId(clip.id)
-  }, [])
-
-  const { video } = state
   const getPlayhead = useCallback(() => lastPlayhead.current, [])
-  const exportJson = useCallback(() => {
+  const exportJson = () => {
     if (!video) return
     downloadJson(
       exportFileName(video.name),
       buildSavedSession(video, clips, getPlayhead(), Date.now()),
     )
-  }, [video, clips, getPlayhead])
-  const closePanel = useCallback(() => setPanelOpen(false), [])
-
-  const selectedClip = selectedIndex >= 0 ? clips[selectedIndex] : null
+  }
 
   useEditorShortcuts({
     mark,
-    togglePlay: player.toggle,
+    togglePlay,
     seekBy: (seconds) => player.seek(now() + seconds),
     stepFrame: (direction) => {
       if (player.paused) player.seek(now() + direction * FRAME_DURATION)
     },
     prevClip: () => goToClip(prevClipIndex(clips, now(), selectedId)),
     nextClip: () => goToClip(nextClipIndex(clips, now(), selectedId)),
-    cycleSpeed,
-    editSelected: () => {
-      if (selectedClip) setEditingId(selectedClip.id)
-    },
+    cycleSpeed: () => setSpeed(nextSpeed),
+    editSelected: openInEditor,
     deleteSelected: () => {
       if (selectedClip) deleteClip(selectedClip)
     },
     undo: () => dispatch({ type: 'undo' }),
     redo: () => dispatch({ type: 'redo' }),
     escape: () => {
-      if (helpOpen) setHelpOpen(false)
-      else if (editingClip) setEditingId(null)
-      else if (panelOpen) setPanelOpen(false)
-      else if (openStart !== null) dispatch({ type: 'cancelMark' })
+      if (openStart !== null) dispatch({ type: 'cancelMark' })
+      else if (selectedId !== null) dispatch({ type: 'select', id: null })
     },
     showShortcuts: () => setHelpOpen(true),
   })
 
-  const onVideoPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    if (e.clientX - rect.left > (rect.width * 2) / 3) {
-      e.currentTarget.setPointerCapture(e.pointerId)
-      setHolding(true)
-    }
-  }
-
-  const onVideoPointerUp = (e: PointerEvent<HTMLDivElement>) => {
-    if (holding) {
-      setHolding(false)
-      return
-    }
-    const rect = e.currentTarget.getBoundingClientRect()
-    if (e.clientX - rect.left <= (rect.width * 2) / 3) player.toggle()
-  }
+  const clipWord = clips.length === 1 ? 'Clip' : 'Clips'
 
   return (
-    <div className={styles.page}>
+    <div className={`${styles.page} ${sidebarOpen ? styles.sidebarOpen : ''}`}>
       <header className={styles.topBar}>
-        <button
-          type="button"
-          className={ui.iconButton}
-          aria-label="Back"
-          onClick={() => {
-            saveNow()
-            onExit()
-          }}
-        >
-          <ChevronLeft />
-        </button>
-        <div className={styles.topActions}>
-          <span className={styles.joinWrap} data-tooltip="Coming soon">
-            <button type="button" className={ui.pill} disabled>
-              Join {clips.length} {clips.length === 1 ? 'Clip' : 'Clips'} (
-              {formatTime(totalClipped)})
+        <div className={styles.topStart}>
+          <button
+            type="button"
+            className={`${styles.homeButton} ${ui.tip} ${ui.tipBelow}`}
+            data-tip="Save and go home"
+            onClick={() => {
+              saveNow()
+              onExit()
+            }}
+          >
+            <ChevronLeft size={18} />
+            Home
+          </button>
+        </div>
+        <div className={styles.fileInfo}>
+          <span className={styles.fileName} title={file.name}>
+            {file.name}
+          </span>
+          <span className={styles.fileDuration}>· {formatTime(duration)}</span>
+        </div>
+        <div className={styles.topEnd}>
+          <button
+            type="button"
+            className={`${ui.pillSecondary} ${styles.topPill} ${ui.tip} ${ui.tipBelow}`}
+            data-tip="Download the clip markers as JSON"
+            onClick={exportJson}
+          >
+            Export JSON
+          </button>
+          <span className={`${ui.tip} ${ui.tipBelow} ${ui.tipEnd}`} data-tip="Coming soon">
+            <button type="button" className={`${ui.pill} ${styles.topPill}`} disabled>
+              Join {clips.length} {clipWord} ({formatTime(totalClipped)})
             </button>
           </span>
           <button
             type="button"
-            className={ui.iconButton}
-            aria-label="Add a 2 second clip at the playhead"
-            onClick={addManualClip}
-            disabled={duration <= 0}
+            className={`${ui.iconButton} ${styles.sidebarToggle} ${ui.tip} ${ui.tipBelow} ${ui.tipEnd}`}
+            aria-label={sidebarOpen ? 'Hide clips' : 'Show clips'}
+            aria-expanded={sidebarOpen}
+            data-tip={sidebarOpen ? 'Hide clips' : 'Show clips'}
+            onClick={() => setSidebarOpen((open) => !open)}
           >
-            <Plus />
-          </button>
-          <button
-            type="button"
-            className={ui.iconButton}
-            aria-label="Show clips"
-            onClick={() => setPanelOpen(true)}
-          >
-            <ListIcon />
-            {clips.length > 0 && <span className={ui.badge}>{clips.length}</span>}
+            <ListIcon size={20} />
           </button>
         </div>
       </header>
 
-      <button
-        type="button"
-        className={`${styles.speedLabel} ${rate > 1 ? styles.speedVisible : ''}`}
-        onClick={cycleSpeed}
-        tabIndex={rate > 1 ? 0 : -1}
-      >
-        <FastForward size={16} /> {rate}× speed
-      </button>
+      <main className={styles.main}>
+        <section className={styles.videoColumn}>
+          <div className={styles.stage}>
+            <div className={styles.videoFrame} onClick={togglePlay}>
+              <video
+                ref={videoRef}
+                className={styles.video}
+                playsInline
+                preload="auto"
+                onLoadedMetadata={(e) => {
+                  const el = e.currentTarget
+                  dispatch({ type: 'setDuration', duration: el.duration })
+                  el.playbackRate = speed
+                  if (initialPlayhead > 0) player.seek(initialPlayhead)
+                }}
+                onError={(e) => {
+                  if (e.currentTarget.error) onError(unplayableMessage(file.name))
+                }}
+              />
+              {speed > 1 && (
+                <div className={styles.speedBadge}>
+                  <FastForward size={14} />
+                  {speed}× speed
+                </div>
+              )}
+              {flash && (
+                <div key={flash.id} className={styles.flash} aria-hidden="true">
+                  {flash.playing ? <PlayIcon size={32} /> : <PauseIcon size={32} />}
+                </div>
+              )}
+            </div>
+            <Toasts toasts={toasts} onDismiss={dismissToast} />
+          </div>
 
-      <div className={styles.videoFrame}>
-        <video
-          ref={videoRef}
-          className={styles.video}
-          playsInline
-          preload="auto"
-          onLoadedMetadata={(e) => {
-            const video = e.currentTarget
-            dispatch({ type: 'setDuration', duration: video.duration })
-            video.playbackRate = rate
-            if (initialPlayhead > 0) player.seek(initialPlayhead)
-          }}
-          onError={(e) => {
-            if (e.currentTarget.error) onError(unplayableMessage(file.name))
-          }}
-        />
-        <div
-          className={styles.videoHit}
-          onPointerDown={onVideoPointerDown}
-          onPointerUp={onVideoPointerUp}
-          onPointerCancel={() => setHolding(false)}
-        />
-      </div>
+          <Scrubber
+            duration={duration}
+            currentTime={player.currentTime}
+            clips={clips}
+            selectedId={selectedId}
+            openStart={openStart}
+            onSeek={player.seek}
+            onSelect={(id) => dispatch({ type: 'select', id })}
+            onTrim={(clip) => dispatch({ type: 'updateClip', clip })}
+            onDragStart={() => {
+              resumeAfterDrag.current = !player.paused
+              player.pause()
+            }}
+            onDragEnd={() => {
+              if (resumeAfterDrag.current) player.play()
+            }}
+          />
 
-      <Scrubber
-        duration={duration}
-        currentTime={player.currentTime}
-        clips={clips}
-        openStart={openStart}
-        rate={rate}
-        onSeek={player.seek}
-        onScrubStart={() => {
-          resumeAfterScrub.current = !player.paused
-          player.pause()
-        }}
-        onScrubEnd={() => {
-          if (resumeAfterScrub.current) player.play()
-        }}
-      />
+          <TransportBar
+            paused={player.paused}
+            marking={openStart !== null}
+            clipLabel={clips.length === 0 ? null : `Clip ${Math.max(labelIndex, 0) + 1}`}
+            hasClips={clips.length > 0}
+            speed={speed}
+            canAddClip={duration > 0}
+            onTogglePlay={togglePlay}
+            onSeekBy={(seconds) => player.seek(now() + seconds)}
+            onPrevClip={() => goToClip(prevClipIndex(clips, now(), selectedId))}
+            onNextClip={() => goToClip(nextClipIndex(clips, now(), selectedId))}
+            onOpenClip={openInEditor}
+            onMark={mark}
+            onSpeed={setSpeed}
+            onAddClip={addManualClip}
+            onShowShortcuts={() => setHelpOpen(true)}
+          />
+        </section>
 
-      <div className={styles.controls}>
-        <div className={styles.navPill}>
-          <button
-            type="button"
-            aria-label="Previous clip"
-            disabled={clips.length === 0}
-            onClick={() => goToClip(prevClipIndex(clips, now(), selectedId))}
-          >
-            ‹
-          </button>
-          <span>
-            {clips.length === 0
-              ? NO_CLIPS_LABEL
-              : pillIndex >= 0
-                ? `Clip ${pillIndex + 1}`
-                : 'Clips'}
-          </span>
-          <button
-            type="button"
-            aria-label="Next clip"
-            disabled={clips.length === 0}
-            onClick={() => goToClip(nextClipIndex(clips, now(), selectedId))}
-          >
-            ›
-          </button>
-        </div>
-
-        <button
-          type="button"
-          className={`${styles.markButton} ${openStart !== null ? styles.marking : ''}`}
-          aria-label={openStart === null ? 'Mark clip start' : 'Mark clip end'}
-          onClick={mark}
-        >
-          <span className={openStart === null ? styles.ring : styles.stop} />
-        </button>
-
-        <div className={styles.playCell}>
-          <button
-            type="button"
-            className={styles.playButton}
-            aria-label={player.paused ? 'Play' : 'Pause'}
-            onClick={player.toggle}
-          >
-            {player.paused ? <PlayIcon size={26} /> : <PauseIcon size={26} />}
-          </button>
-        </div>
-      </div>
-
-      {panelOpen && (
-        <ClipsPanel
-          clips={clips}
-          overlapping={overlapping}
-          selectedId={selectedId}
-          onSelect={selectFromPanel}
-          onEdit={editFromPanel}
-          onExport={exportJson}
-          onClose={closePanel}
-        />
-      )}
-
-      {editingClip && (
-        <ClipEditor
-          clip={editingClip}
-          number={editingIndex + 1}
-          duration={duration}
-          playhead={player.currentTime}
-          onChange={(clip) => dispatch({ type: 'updateClip', clip })}
-          onPreview={(clip) => player.playRange(clip.start, clip.end)}
-          onDelete={deleteClip}
-          onClose={() => setEditingId(null)}
-        />
-      )}
+        <aside className={styles.sidebar} aria-label="Clips">
+          <ClipsList
+            clips={clips}
+            overlapping={overlapping}
+            selectedId={selectedId}
+            totalClipped={totalClipped}
+            onSelect={selectFromList}
+            onPlay={playFromList}
+            onDelete={deleteClip}
+          />
+          {selectedClip && (
+            <ClipEditor
+              key={selectedClip.id}
+              ref={editorRef}
+              clip={selectedClip}
+              number={selectedIndex + 1}
+              duration={duration}
+              playhead={player.currentTime}
+              onChange={(clip) => dispatch({ type: 'updateClip', clip })}
+              onPreview={(clip) => player.playRange(clip.start, clip.end)}
+              onDelete={deleteClip}
+            />
+          )}
+        </aside>
+      </main>
 
       {helpOpen && <ShortcutsModal onClose={() => setHelpOpen(false)} />}
-      <Toasts toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }
