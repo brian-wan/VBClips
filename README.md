@@ -85,7 +85,20 @@ read-only, never uploaded or copied into memory.
   can only land on keyframes, so a clip may start up to one keyframe interval early (usually
   under a second on phone recordings).
 - Precise re-encodes each clip with H.264/AAC, so cuts are frame-accurate. It is much slower in
-  the browser; the dialog shows an estimate that updates once the first clip has been measured.
+  the browser; the mode card shows an estimate at the speed this browser managed last time.
+
+While a join runs, one bar covers the whole job: downloading ffmpeg (about 33 MB, only the first
+time in a page, with the bytes shown), cutting each clip, combining them and saving. Each part
+takes its share of the bar by how long it is expected to take, so the percent tracks real work
+and never moves backwards (except once, if Fast has to switch to Precise). The time left comes
+from the speed measured during the run, smoothed so it does not flicker, and reads "Estimating…"
+for the first few seconds. The measured speeds (download, Fast, Precise and combining) are kept
+in `localStorage` under `vbclipper:join-rates`, so the next join starts from them.
+
+Opening videos shows progress too: Choose Video and Continue Session read "Opening <name>…" (or
+"Opening 2 of 3…") while each file's length is read, the plus tile spins while added videos are
+read, and a block header shows "Preparing frames 12/25" with a thin line until its filmstrip is
+complete.
 
 If Fast cannot combine the clips (usually because their codec settings differ, as with videos
 from different cameras), the join switches to Precise on its own and says why. The joined file is assembled in browser memory, so Join refuses
