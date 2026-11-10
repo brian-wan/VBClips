@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { dropIndex, locate, moveSource, offsetOf, toSequence, totalDuration } from './sequence'
+import {
+  dropIndex,
+  locate,
+  locateIn,
+  moveSource,
+  offsetOf,
+  toSequence,
+  totalDuration,
+} from './sequence'
 
 const sources = [{ duration: 10 }, { duration: 30 }, { duration: 5 }]
 
@@ -50,6 +58,21 @@ describe('locate', () => {
       const { index, localTime } = locate(sources, t)
       expect(toSequence(sources, index, localTime)).toBe(t)
     }
+  })
+})
+
+describe('locateIn', () => {
+  it('keeps the exact end of a source in that source', () => {
+    expect(locate(sources, 10)).toEqual({ index: 1, localTime: 0 })
+    expect(locateIn(sources, 0, 10)).toEqual({ index: 0, localTime: 10 })
+  })
+
+  it('clamps the local time to the source and the index to the list', () => {
+    expect(locateIn(sources, 1, 31)).toEqual({ index: 1, localTime: 30 })
+    expect(locateIn(sources, 1, -2)).toEqual({ index: 1, localTime: 0 })
+    expect(locateIn(sources, 7, 2)).toEqual({ index: 2, localTime: 2 })
+    expect(locateIn(sources, 0, NaN)).toEqual({ index: 0, localTime: 0 })
+    expect(locateIn([], 0, 3)).toEqual({ index: -1, localTime: 0 })
   })
 })
 

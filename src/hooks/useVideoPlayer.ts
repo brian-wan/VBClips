@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { clamp } from '../lib/clips'
-import { locate, toSequence, totalDuration, type Location } from '../lib/sequence'
+import { locate, locateIn, toSequence, totalDuration, type Location } from '../lib/sequence'
 
 export type PlayerSource = { id: string; duration: number; url: string | undefined }
 
@@ -16,6 +16,11 @@ export type VideoPlayer = {
   now: () => Location & { time: number }
   /** Seeks to a sequence time, swapping sources when it lies in another one. */
   seek: (t: number) => void
+  /**
+   * Seeks inside source `index`, staying there even at its exact end. For seeks that start in a
+   * block: clicks, scrubs and trim handles.
+   */
+  seekLocal: (index: number, localTime: number) => void
   play: () => void
   pause: () => void
   toggle: () => void
@@ -29,10 +34,16 @@ const END_EPSILON = 0.05
  * One `<video>` element plays the sources back to back. At the end of a source it swaps `src`
  * to the next one and keeps playing; after the last it pauses at the end.
  */
+export type PlayerOptions = {
+  /** Called when playback runs off the end of a source into the next one. */
+  onAutoAdvance?: () => void
+}
+
 export function useVideoPlayer(
   videoRef: RefObject<HTMLVideoElement | null>,
   sources: readonly PlayerSource[],
   initialTime: number,
+  options: PlayerOptions = {},
 ): VideoPlayer {
   const [currentId, setCurrentId] = useState<string | null>(null)
   const [localTime, setLocalTime] = useState(0)
@@ -46,9 +57,14 @@ export function useVideoPlayer(
   const lastLocal = useRef(0)
   const stopAt = useRef<number | null>(null)
   const initialTimeRef = useRef(initialTime)
+  const started = useRef(false)
+  /** True while the element plays, including the moment it pauses itself at a source's end. */
+  const playing = useRef(false)
+  const optionsRef = useRef(options)
 
   useEffect(() => {
     sourcesRef.current = sources
+    optionsRef.current = options
   })
 
   const indexOf = (id: string | null) => sourcesRef.current.findIndex((s) => s.id === id)
@@ -60,6 +76,7 @@ export function useVideoPlayer(
       const source = sourcesRef.current[index]
       if (!video || !source) return
       stopAt.current = null
+      started.current = true
       currentIdRef.current = source.id
       lastIndex.current = index
       lastLocal.current = local
@@ -101,9 +118,12 @@ export function useVideoPlayer(
       }
       return
     }
-    if (currentIdRef.current === null && loadedUrl.current === null) {
+    if (!started.current) {
       const start = locate(sources, initialTimeRef.current)
       goTo(start.index, start.localTime, false)
+    } else if (currentIdRef.current === null) {
+      // Every source was removed and a new one added: start it from the beginning.
+      goTo(0, 0, false)
     } else {
       goTo(clamp(lastIndex.current, 0, sources.length - 1), 0, !video.paused)
     }
@@ -135,6 +155,7 @@ export function useVideoPlayer(
       frame = requestAnimationFrame(tick)
     }
     const onPlay = () => {
+      playing.current = true
       setPaused(false)
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(tick)
@@ -144,15 +165,24 @@ export function useVideoPlayer(
     const onPause = () => {
       cancelAnimationFrame(frame)
       // The element pauses on its own at the end of each source; advancing resumes it.
-      if (atEnd() && hasNext() && stopAt.current === null) return
+      if (playing.current && atEnd() && hasNext() && stopAt.current === null) return
+      playing.current = false
       setPaused(true)
       sync()
     }
+    // Only playback that runs into the end advances; a paused seek to the exact end stays put.
     const onEnded = () => {
       const index = indexOf(currentIdRef.current)
-      if (stopAt.current === null && index >= 0 && index < sourcesRef.current.length - 1) {
+      const advance =
+        playing.current &&
+        stopAt.current === null &&
+        index >= 0 &&
+        index < sourcesRef.current.length - 1
+      if (advance) {
         goTo(index + 1, 0, true)
+        optionsRef.current.onAutoAdvance?.()
       } else {
+        playing.current = false
         setPaused(true)
         sync()
       }
@@ -212,9 +242,26 @@ export function useVideoPlayer(
     [videoRef, goTo],
   )
 
+  const seekLocal = useCallback(
+    (index: number, localTime: number) => {
+      const target = locateIn(sourcesRef.current, index, localTime)
+      if (target.index < 0) return
+      const video = videoRef.current
+      goTo(target.index, target.localTime, video ? !video.paused : false)
+    },
+    [videoRef, goTo],
+  )
+
+  /** Playing from the very end of a source that has a successor continues in the next one. */
   const play = useCallback(() => {
-    void videoRef.current?.play().catch(() => undefined)
-  }, [videoRef])
+    const video = videoRef.current
+    if (!video) return
+    const index = sourcesRef.current.findIndex((s) => s.id === currentIdRef.current)
+    const atEnd =
+      video.ended || (Number.isFinite(video.duration) && video.currentTime >= video.duration)
+    if (atEnd && index >= 0 && index < sourcesRef.current.length - 1) goTo(index + 1, 0, true)
+    else void video.play().catch(() => undefined)
+  }, [videoRef, goTo])
 
   const pause = useCallback(() => videoRef.current?.pause(), [videoRef])
 
@@ -247,6 +294,7 @@ export function useVideoPlayer(
     location,
     now,
     seek,
+    seekLocal,
     play,
     pause,
     toggle,

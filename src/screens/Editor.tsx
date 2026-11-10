@@ -96,8 +96,18 @@ export function Editor({
   )
   const videoRef = useRef<HTMLVideoElement>(null)
   const editorRef = useRef<HTMLElement>(null)
-  const player = useVideoPlayer(videoRef, playerSources, initialPlayhead)
   const { toasts, show: showToast, dismiss: dismissToast } = useToasts()
+  const openStartRef = useRef(state.openStart)
+  useEffect(() => {
+    openStartRef.current = state.openStart
+  })
+  const player = useVideoPlayer(videoRef, playerSources, initialPlayhead, {
+    // Playback ran into the next video with a clip still open: it stays open, but say why it
+    // cannot end here.
+    onAutoAdvance: () => {
+      if (openStartRef.current !== null) showToast('A clip can’t span two videos')
+    },
+  })
   const [speed, setSpeed] = useState(1)
   const [helpOpen, setHelpOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
@@ -243,7 +253,7 @@ export function Editor({
     })
   }
 
-  const { seek, playRange } = player
+  const { seek, seekLocal, playRange } = player
   const sequenceStart = useCallback(
     (clip: Clip) =>
       toSequence(
@@ -272,9 +282,9 @@ export function Editor({
   const selectedSourceIndex = selectedSource ? sources.indexOf(selectedSource) : -1
   const seekInSelectedSource = useCallback(
     (localTime: number) => {
-      if (selectedSourceIndex >= 0) seek(toSequence(sources, selectedSourceIndex, localTime))
+      if (selectedSourceIndex >= 0) seekLocal(selectedSourceIndex, localTime)
     },
-    [seek, sources, selectedSourceIndex],
+    [seekLocal, selectedSourceIndex],
   )
 
   const exportJson = () => {
@@ -447,7 +457,7 @@ export function Editor({
             location={location}
             currentTime={player.currentTime}
             duration={duration}
-            onSeek={player.seek}
+            onSeekLocal={player.seekLocal}
             onSelect={(id) => dispatch({ type: 'select', id })}
             onTrim={(clip) => dispatch({ type: 'updateClip', clip })}
             onDragStart={pauseForDrag}

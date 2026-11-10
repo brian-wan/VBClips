@@ -37,6 +37,18 @@ export function locate(sources: readonly Timed[], t: number): Location {
   return { index: last, localTime: lengthOf(sources[last]) }
 }
 
+/**
+ * A position given inside one source, kept in that source even at its exact end, where `locate`
+ * would move it to the start of the next one. Used for seeks that start inside a block.
+ */
+export function locateIn(sources: readonly Timed[], index: number, localTime: number): Location {
+  if (sources.length === 0) return { index: -1, localTime: 0 }
+  const i = Math.min(Math.max(Math.trunc(index), 0), sources.length - 1)
+  const length = lengthOf(sources[i])
+  const local = Number.isFinite(localTime) ? Math.min(Math.max(localTime, 0), length) : 0
+  return { index: i, localTime: local }
+}
+
 export function toSequence(sources: readonly Timed[], index: number, localTime: number): number {
   return offsetOf(sources, index) + localTime
 }

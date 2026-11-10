@@ -36,7 +36,8 @@ type Props = {
   location: Location
   currentTime: number
   duration: number
-  onSeek: (t: number) => void
+  /** Seeks inside block `index`; the end of a block stays in that block. */
+  onSeekLocal: (index: number, localTime: number) => void
   onSelect: (id: string) => void
   onTrim: (clip: Clip) => void
   /** Called when a scrub or trim drag starts and ends, so the player can pause and resume. */
@@ -145,7 +146,7 @@ export function Timeline({
   location,
   currentTime,
   duration,
-  onSeek,
+  onSeekLocal,
   onSelect,
   onTrim,
   onDragStart,
@@ -205,7 +206,7 @@ export function Timeline({
       selectedId,
       playhead: location.index === block.index ? location.localTime : null,
     })
-    return { index: block.index, x, t: toSequence(sources, block.index, local), target }
+    return { index: block.index, x, local, t: toSequence(sources, block.index, local), target }
   }
 
   /** x of local time `t` in block `index`, relative to the blocks row. */
@@ -216,10 +217,10 @@ export function Timeline({
     return rect.left - rowLeft() + (percentOf(t, source.duration) / 100) * rect.width
   }
 
-  const startScrub = (t: number) => {
+  const startScrub = (index: number, local: number) => {
     setDrag({ kind: 'scrub' })
     onDragStart()
-    onSeek(t)
+    onSeekLocal(index, local)
   }
 
   const onStripDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -240,11 +241,11 @@ export function Timeline({
         tipX,
       })
       onDragStart()
-      onSeek(toSequence(sources, index, edgeTime(selected, hit.target.edge)))
+      onSeekLocal(index, edgeTime(selected, hit.target.edge))
     } else if (hit.target.kind === 'clip') {
       setDrag({ kind: 'pending', id: hit.target.id, startX: e.clientX })
     } else {
-      startScrub(hit.t)
+      startScrub(hit.index, hit.local)
     }
   }
 
@@ -253,9 +254,9 @@ export function Timeline({
     if (hit) setHover({ x: e.clientX - rowLeft(), t: hit.t, target: hit.target })
     if (!drag || !hit) return
     if (drag.kind === 'pending' && Math.abs(e.clientX - drag.startX) > DRAG_THRESHOLD_PX) {
-      startScrub(hit.t)
+      startScrub(hit.index, hit.local)
     } else if (drag.kind === 'scrub') {
-      onSeek(hit.t)
+      onSeekLocal(hit.index, hit.local)
     } else if (drag.kind === 'trim') {
       const source = sources[drag.index]
       const rect = stripRefs.current.get(source.id)?.getBoundingClientRect()
@@ -263,7 +264,7 @@ export function Timeline({
       const t = timeAtX(e.clientX - rect.left, rect.width, source.duration)
       const draft = trimClip(drag.original, drag.edge, t, source.duration)
       setDrag({ ...drag, draft, tipX: edgeX(drag.index, edgeTime(draft, drag.edge)) })
-      onSeek(toSequence(sources, drag.index, edgeTime(draft, drag.edge)))
+      onSeekLocal(drag.index, edgeTime(draft, drag.edge))
     }
   }
 
