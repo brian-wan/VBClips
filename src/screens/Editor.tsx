@@ -17,7 +17,7 @@ import { useEditorShortcuts } from '../hooks/useEditorShortcuts'
 import { useSessionPersistence } from '../hooks/useSessionPersistence'
 import { useToasts } from '../hooks/useToasts'
 import { useVideoPlayer } from '../hooks/useVideoPlayer'
-import { findOverlappingIds, manualClipSpan, totalClippedDuration, type Clip } from '../lib/clips'
+import { findOverlappingIds, totalClippedDuration, type Clip } from '../lib/clips'
 import { fingerprint } from '../lib/fingerprint'
 import { currentClipIndex, nextClipIndex, prevClipIndex } from '../lib/navigation'
 import { buildSavedSession, exportFileName } from '../lib/persistence'
@@ -196,15 +196,6 @@ export function Editor({
     } else {
       showToast('Clip end must come after its start')
     }
-  }
-
-  const addManualClip = () => {
-    const here = player.now()
-    const source = sources[here.index]
-    if (!source) return
-    const span = manualClipSpan(here.localTime, source.duration)
-    if (span.end - span.start <= 0) return
-    dispatch({ type: 'addClip', clip: { id: newId(), sourceId: source.id, ...span } })
   }
 
   const deleteClip = useCallback(
@@ -473,7 +464,6 @@ export function Editor({
             clipLabel={clips.length === 0 ? null : `Clip ${Math.max(labelIndex, 0) + 1}`}
             hasClips={clips.length > 0}
             speed={speed}
-            canAddClip={currentSource !== null}
             onTogglePlay={togglePlay}
             onSeekBy={(seconds) => player.seek(now() + seconds)}
             onPrevClip={() => goToClip(prevClipIndex(sequenceClips, now(), selectedId))}
@@ -481,7 +471,6 @@ export function Editor({
             onOpenClip={openInEditor}
             onMark={mark}
             onSpeed={setSpeed}
-            onAddClip={addManualClip}
             onShowShortcuts={() => setHelpOpen(true)}
           />
         </section>

@@ -61,8 +61,7 @@ sidebar becomes an overlay behind a toggle in the top bar.
   video and its clips (Undo brings them back). The plus tile adds videos; one that is already in
   the timeline is skipped.
 - Transport bar: play/pause, back and forward 5 s, previous / current / next clip, the mark
-  button (Space), the 1× / 1.5× / 2× speed control, Add clip (a 2 s clip at the playhead), and
-  the shortcuts list. Hover any button to see its key.
+  button (Space), the 1× / 1.5× / 2× speed control, and the shortcuts list. Hover any button to see its key.
 - Clips sidebar: click a row to select it and jump to its start, double-click to play just that
   clip, hover for the delete icon. Clips are listed in timeline order, then by start time. An
   amber dot marks clips that overlap another clip of the same video. The selected clip's editor is

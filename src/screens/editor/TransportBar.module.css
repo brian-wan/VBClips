@@ -188,40 +188,6 @@
   cursor: default;
 }
 
-.addClip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: var(--secondary-size);
-  min-width: var(--secondary-size);
-  padding: 0 16px 0 12px;
-  border: none;
-  border-radius: var(--radius-pill);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-size: var(--font-caption);
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    background-color var(--motion),
-    opacity var(--motion);
-}
-
-.addClip:hover:not(:disabled) {
-  background: var(--color-surface-raised);
-}
-
-.addClip:active:not(:disabled) {
-  opacity: var(--pressed-opacity);
-}
-
-.addClip:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
 .question {
   font-size: var(--font-label);
   font-weight: 600;
@@ -230,21 +196,13 @@
 
 /*
  * The spec's full-size controls need about 690 px; at a 1024 px viewport the video column is
- * 616 px. Below 1280 px the secondary controls drop to 36 px, the group gap to 16 px, and
- * "Add clip" to its icon so the bar keeps one row.
+ * 616 px. Below 1280 px the secondary controls drop to 36 px and the group gap to 16 px so the
+ * bar keeps one row.
  */
 @media (max-width: 1279px) {
   .bar {
     --secondary-size: 36px;
     --group-gap: 16px;
-  }
-
-  .addClip {
-    padding: 0;
-  }
-
-  .addLabel {
-    display: none;
   }
 
   .segment {

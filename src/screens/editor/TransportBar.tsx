@@ -5,7 +5,6 @@ import {
   Forward5,
   PauseIcon,
   PlayIcon,
-  Plus,
 } from '../../components/Icons'
 import ui from '../../components/ui.module.css'
 import { SPEEDS } from '../../lib/speed'
@@ -17,7 +16,6 @@ type Props = {
   clipLabel: string | null
   hasClips: boolean
   speed: number
-  canAddClip: boolean
   onTogglePlay: () => void
   onSeekBy: (seconds: number) => void
   onPrevClip: () => void
@@ -25,7 +23,6 @@ type Props = {
   onOpenClip: () => void
   onMark: () => void
   onSpeed: (speed: number) => void
-  onAddClip: () => void
   onShowShortcuts: () => void
 }
 
@@ -37,7 +34,6 @@ export function TransportBar({
   clipLabel,
   hasClips,
   speed,
-  canAddClip,
   onTogglePlay,
   onSeekBy,
   onPrevClip,
@@ -45,7 +41,6 @@ export function TransportBar({
   onOpenClip,
   onMark,
   onSpeed,
-  onAddClip,
   onShowShortcuts,
 }: Props) {
   return (
@@ -144,17 +139,6 @@ export function TransportBar({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className={`${ui.tip} ${styles.addClip}`}
-          aria-label="Add clip"
-          data-tip="Add a 2 s clip at the playhead"
-          disabled={!canAddClip}
-          onClick={onAddClip}
-        >
-          <Plus size={18} />
-          <span className={styles.addLabel}>Add clip</span>
-        </button>
         <button
           type="button"
           className={`${iconTip} ${ui.tipEnd} ${styles.secondary}`}

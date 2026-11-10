@@ -3,7 +3,6 @@ export type Clip = { id: string; sourceId: string; start: number; end: number }
 export type Span = { start: number; end: number }
 
 export const MIN_CLIP_LENGTH = 0.2
-export const MANUAL_CLIP_LENGTH = 2
 export const FRAME_DURATION = 1 / 30
 const EPSILON = 1e-6
 
@@ -111,12 +110,6 @@ export function totalClippedDuration(clips: readonly Clip[]): number {
 }
 
 /** Span for the "+" button: 2 s from the playhead, shifted back if it would run past the end. */
-export function manualClipSpan(playhead: number, duration: number): Span {
-  const end = Math.min(playhead + MANUAL_CLIP_LENGTH, duration)
-  const start = Math.max(0, Math.min(playhead, end - MANUAL_CLIP_LENGTH))
-  return { start, end }
-}
-
 export function canSetStart(clip: Span, start: number): boolean {
   return start >= -EPSILON && isValidSpan(start, clip.end)
 }

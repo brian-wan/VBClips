@@ -95,8 +95,8 @@ Layout is a fixed-height grid filling the viewport (no page scroll):
   - Center: the mark button (56px round, green ring idle, orange with a stop square while
     marking) with the caption "Space" under it in secondary grey.
   - Right: a segmented speed control with three segments "1×", "1.5×", "2×"; the active segment
-    is filled orange. Next to it an "Add clip" button (plus icon) that inserts a 2 s clip at the
-    playhead and selects it, and a "?" button that opens the shortcuts modal.
+    is filled orange. Next to it a "?" button that opens the shortcuts modal. (An earlier "Add
+    clip" button that inserted a 2 s clip at the playhead was removed as not useful.)
 - Clips sidebar: header "Clips (N)" with total clipped duration right-aligned. The list fills the
   remaining height and scrolls on its own. Each row (48px): "Clip N" in orange, "m:ss.t → m:ss.t"
   in grey, duration right-aligned, an amber dot when the clip overlaps another. The selected row

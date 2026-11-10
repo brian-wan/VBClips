@@ -6,7 +6,6 @@ import {
   clipsOverlap,
   findOverlappingIds,
   insertClip,
-  manualClipSpan,
   mergeOverlaps,
   removeClip,
   replaceClip,
@@ -107,20 +106,6 @@ describe('clampToDuration', () => {
     expect(clampToDuration(11, 10)).toBe(10)
     expect(clampToDuration(4, 10)).toBe(4)
     expect(clampToDuration(Number.NaN, 10)).toBe(0)
-  })
-})
-
-describe('manualClipSpan', () => {
-  it('makes a 2 s clip from the playhead', () => {
-    expect(manualClipSpan(10, 60)).toEqual({ start: 10, end: 12 })
-  })
-
-  it('shifts back when the playhead is near the end', () => {
-    expect(manualClipSpan(59, 60)).toEqual({ start: 58, end: 60 })
-  })
-
-  it('shrinks to the video when it is shorter than 2 s', () => {
-    expect(manualClipSpan(0.5, 1)).toEqual({ start: 0, end: 1 })
   })
 })
 
