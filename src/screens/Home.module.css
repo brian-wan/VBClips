@@ -23,9 +23,16 @@
 }
 
 .subtitle {
-  margin: 0 0 20px;
+  margin: 0;
   color: var(--color-text-secondary);
   font-size: var(--font-body);
+}
+
+/* Pulled up under the subtitle so the two read as one block. */
+.privacy {
+  margin: -4px 0 20px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-caption);
 }
 
 .choose,

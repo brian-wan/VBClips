@@ -204,6 +204,7 @@ export function Home({ onOpen, error, onError }: Props) {
       <Volleyball size={96} />
       <h1 className={styles.title}>VBClipper</h1>
       <p className={styles.subtitle}>Select a volleyball video to start clipping points</p>
+      <p className={styles.privacy}>Your videos never leave this computer.</p>
 
       <div className={styles.choose}>
         <button
