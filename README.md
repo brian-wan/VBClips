@@ -46,7 +46,9 @@ their clips. Sessions saved by earlier versions open as a single-video session.
 
 The editor is a desktop layout built for mouse and keyboard; it fills the window and never
 scrolls (only the clip list does). The minimum supported width is 1024px; below that the clips
-sidebar becomes an overlay behind a toggle in the top bar.
+sidebar becomes an overlay behind a toggle in the top bar. It is styled like a desktop editing
+tool: 13px type, 32px square-cornered controls, dense 36px clip rows, and tooltips that show
+each control's key as a chip.
 
 - Top bar: Home (saves and goes back), the file name and duration (or "3 videos · 1:52:10" with
   several), and Join (see Joining clips below; disabled until there is a clip).
@@ -60,7 +62,8 @@ sidebar becomes an overlay behind a toggle in the top bar.
   video and its clips (Undo brings them back). The plus tile adds videos; one that is already in
   the timeline is skipped.
 - Transport bar: play/pause, back and forward 5 s, previous / current / next clip, the mark
-  button (Space), the 1× / 1.5× / 2× speed control, and the shortcuts list. Hover any button to see its key.
+  button (Space), the 1× / 1.5× / 2× speed control, and the shortcuts list. Hover any button to
+  see its key.
 - Clips sidebar: click a row to select it and jump to its start, double-click to play just that
   clip, hover for the delete icon. Clips are listed in timeline order, then by start time. An
   amber dot marks clips that overlap another clip of the same video. The selected clip's editor is
@@ -134,4 +137,6 @@ Shortcuts are ignored while focus is in a text input.
 - `src/hooks/`: the video player that plays the sources back to back, keyboard shortcuts,
   persistence, toasts, routing.
 - `src/screens/`: Home and Editor screens, with the editor's timeline, transport bar, clip list,
-  clip editor and Join dialog in `src/screens/editor/`; `src/components/`: shared UI.
+  clip editor and Join dialog in `src/screens/editor/`; `src/components/`: shared UI (buttons,
+  tooltips and key chips in `ui.module.css`, the `Tip` tooltip, dialogs, toasts). Design tokens
+  (type scale, radii, control heights, colors) live in `src/index.css`.
