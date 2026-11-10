@@ -8,7 +8,14 @@ import {
   type DragEvent,
 } from 'react'
 import type { EditorInput } from '../App'
-import { ChevronLeft, FastForward, ListIcon, PauseIcon, PlayIcon } from '../components/Icons'
+import {
+  ChevronLeft,
+  FastForward,
+  JoinIcon,
+  ListIcon,
+  PauseIcon,
+  PlayIcon,
+} from '../components/Icons'
 import { ShortcutsModal } from '../components/ShortcutsModal'
 import { Toasts } from '../components/Toasts'
 import { Tip } from '../components/Tip'
@@ -385,6 +392,7 @@ export function Editor({
   )
 
   const clipWord = clips.length === 1 ? 'Clip' : 'Clips'
+  const joinLabel = `Join ${clips.length} ${clipWord} (${formatTime(totalClipped)})`
   const onlySource = sources.length === 1 ? sources[0] : undefined
 
   return (
@@ -439,14 +447,18 @@ export function Editor({
           <span className={`${ui.tip} ${ui.tipBelow} ${ui.tipEnd}`}>
             <button
               type="button"
-              className={ui.primary}
+              className={`${ui.primary} ${styles.joinButton}`}
+              aria-label={joinLabel}
               disabled={clips.length === 0}
               onClick={() => {
                 player.pause()
                 setJoinOpen(true)
               }}
             >
-              Join {clips.length} {clipWord} ({formatTime(totalClipped)})
+              <JoinIcon size={16} className={styles.joinIcon} />
+              <span className={styles.joinText}>
+                Join {clips.length} {clipWord} ({formatTime(totalClipped)})
+              </span>
             </button>
             <Tip
               label={clips.length === 0 ? 'Mark a clip first' : 'Join the clips into one video'}

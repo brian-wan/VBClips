@@ -1,7 +1,11 @@
-/* Fixed-height grid filling the viewport. Only the clip list scrolls. */
+/*
+ * Fixed-height grid filling the viewport. Only the clip list scrolls. The page draws under a
+ * notch or home indicator (`viewport-fit=cover`), so the edges keep clear of the safe-area
+ * insets; on a desktop browser every inset is 0 and nothing moves.
+ */
 .page {
   display: grid;
-  grid-template-rows: 44px minmax(0, 1fr);
+  grid-template-rows: calc(44px + env(safe-area-inset-top)) minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
@@ -18,7 +22,8 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
   align-items: center;
   gap: 24px;
-  padding: 0 24px;
+  padding: env(safe-area-inset-top) max(24px, env(safe-area-inset-right)) 0
+    max(24px, env(safe-area-inset-left));
 }
 
 .topStart,
@@ -64,6 +69,12 @@
   display: none;
 }
 
+/* The Join glyph shows on phones only. */
+.joinIcon {
+  display: none;
+  flex-shrink: 0;
+}
+
 .main {
   position: relative;
   display: grid;
@@ -77,7 +88,7 @@
   gap: 16px;
   min-width: 0;
   min-height: 0;
-  padding: 8px 24px 24px;
+  padding: 8px 24px max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
   user-select: none;
 }
 
@@ -153,6 +164,7 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) 0;
   border-left: 1px solid var(--color-separator);
   background: var(--color-surface);
 }
@@ -165,6 +177,11 @@
 
   .sidebarToggle {
     display: inline-flex;
+  }
+
+  /* The sidebar is an overlay here, so the video column reaches the right edge. */
+  .videoColumn {
+    padding-right: max(24px, env(safe-area-inset-right));
   }
 
   .sidebar {
@@ -188,5 +205,96 @@
     visibility: visible;
     transform: none;
     opacity: 1;
+  }
+}
+
+/*
+ * Phones: one column. The top bar; the video in a 16:9 frame capped at 38% of the viewport
+ * height; the timeline; the transport bar; then the clips panel, always shown, taking what is
+ * left. The panel keeps at least 120px: on a short screen the video gives way first.
+ */
+@media (max-width: 699px) {
+  .page {
+    --gutter-start: max(12px, env(safe-area-inset-left));
+    --gutter-end: max(12px, env(safe-area-inset-right));
+    --video-cap: 38dvh;
+  }
+
+  .topBar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: env(safe-area-inset-top) var(--gutter-end) 0 var(--gutter-start);
+  }
+
+  .fileInfo {
+    justify-content: center;
+  }
+
+  .joinIcon {
+    display: block;
+  }
+
+  .sidebarToggle {
+    display: none;
+  }
+
+  .main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows:
+      minmax(
+        0,
+        min(var(--video-cap), calc((100vw - var(--gutter-start) - var(--gutter-end)) * 9 / 16))
+      )
+      auto auto minmax(120px, 1fr);
+    row-gap: 8px;
+    padding-top: 4px;
+  }
+
+  /* Its three rows become rows of the page column, so the video can give way to the panel. */
+  .videoColumn {
+    display: contents;
+  }
+
+  .videoColumn > * {
+    margin: 0 var(--gutter-end) 0 var(--gutter-start);
+  }
+
+  /*
+   * Full width, with the rows' own 12px padding as the gutter. The list scrolls inside it and the
+   * clip editor stays pinned at its bottom; when even that does not fit, the panel scrolls too.
+   */
+  .sidebar {
+    position: static;
+    grid-template-rows: auto minmax(44px, 1fr) auto;
+    width: auto;
+    overflow-y: auto;
+    padding: 0 calc(var(--gutter-end) - 12px) env(safe-area-inset-bottom)
+      calc(var(--gutter-start) - 12px);
+    border-top: 1px solid var(--color-separator);
+    border-left: none;
+    box-shadow: none;
+    visibility: visible;
+    transform: none;
+    opacity: 1;
+    transition: none;
+  }
+}
+
+/* Landscape phones: less video, so the timeline and the panel still fit. */
+@media (max-width: 699px) and (max-height: 499px) {
+  .page {
+    --video-cap: 30dvh;
+  }
+}
+
+/* The narrowest phones keep the Join glyph and drop its text; the label stays for screen readers. */
+@media (max-width: 359px) {
+  .joinText {
+    display: none;
+  }
+
+  .topEnd .joinButton {
+    min-width: 44px;
+    padding: 0 12px;
   }
 }

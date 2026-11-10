@@ -207,3 +207,85 @@
     min-width: 44px;
   }
 }
+
+/*
+ * Phones: one row. The mark button grows to 56px in the middle; every other control except the
+ * clip label shares the rest, shrinking from 44px wide as the screen narrows (about 30px at 390px,
+ * where ten 44px targets cannot fit). Their touch targets stay 44px tall but only as wide as the
+ * control, so neighbours never overlap.
+ */
+@media (max-width: 699px) {
+  .bar {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 56px;
+  }
+
+  .group {
+    display: contents;
+  }
+
+  .cluster,
+  .clipNav,
+  .segmented {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .cluster {
+    gap: 2px;
+  }
+
+  /* Its label does not shrink, so its two arrows would otherwise give up the most. */
+  .clipNav {
+    flex-shrink: 0.7;
+  }
+
+  .cluster > button,
+  .cluster .play,
+  .navArrow,
+  .segment {
+    flex: 0 1 auto;
+    width: 44px;
+    min-width: 0;
+  }
+
+  .navLabel {
+    flex: none;
+    min-width: 0;
+    padding: 0 6px;
+  }
+
+  .segment {
+    padding: 0 4px;
+  }
+
+  .cluster > button::before,
+  .navArrow::before,
+  .navLabel::before,
+  .segment::before {
+    right: 0;
+    left: 0;
+  }
+
+  .center {
+    flex: none;
+  }
+
+  .mark {
+    width: 56px;
+    height: 56px;
+  }
+
+  .ring {
+    width: 40px;
+    height: 40px;
+  }
+
+  .stop {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+  }
+}

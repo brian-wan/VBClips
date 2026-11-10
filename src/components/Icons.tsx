@@ -55,6 +55,15 @@ export const ListIcon = (p: IconProps) => (
   </Svg>
 )
 
+/** Two clips side by side, joined: the Join button's glyph on phones. */
+export const JoinIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2.5" y="6" width="7" height="12" rx="1.5" />
+    <rect x="14.5" y="6" width="7" height="12" rx="1.5" />
+    <path d="M9.5 12h5" />
+  </Svg>
+)
+
 export const Trash = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />

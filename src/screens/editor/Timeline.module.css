@@ -328,3 +328,20 @@
     left: -22px;
   }
 }
+
+/* Phones: a 56px filmstrip, with the plus tile as tall so it still lines up with it. */
+@media (max-width: 699px) {
+  .blocks {
+    height: 76px;
+  }
+
+  .block,
+  .ghost {
+    grid-template-rows: 20px 56px;
+  }
+
+  .empty,
+  .plus {
+    height: 56px;
+  }
+}
