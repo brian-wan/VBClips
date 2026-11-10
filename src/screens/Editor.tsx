@@ -7,13 +7,7 @@ import { useEditorShortcuts } from '../hooks/useEditorShortcuts'
 import { useSessionPersistence } from '../hooks/useSessionPersistence'
 import { useToasts } from '../hooks/useToasts'
 import { useVideoPlayer } from '../hooks/useVideoPlayer'
-import {
-  FRAME_DURATION,
-  findOverlappingIds,
-  manualClipSpan,
-  totalClippedDuration,
-  type Clip,
-} from '../lib/clips'
+import { findOverlappingIds, manualClipSpan, totalClippedDuration, type Clip } from '../lib/clips'
 import { currentClipIndex, nextClipIndex, prevClipIndex } from '../lib/navigation'
 import { canEndMark, initialSession, sessionReducer } from '../lib/session'
 import { buildSavedSession, exportFileName } from '../lib/persistence'
@@ -177,9 +171,6 @@ export function Editor({
     mark,
     togglePlay,
     seekBy: (seconds) => player.seek(now() + seconds),
-    stepFrame: (direction) => {
-      if (player.paused) player.seek(now() + direction * FRAME_DURATION)
-    },
     prevClip: () => goToClip(prevClipIndex(clips, now(), selectedId)),
     nextClip: () => goToClip(nextClipIndex(clips, now(), selectedId)),
     cycleSpeed: () => setSpeed(nextSpeed),

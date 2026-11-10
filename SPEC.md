@@ -89,7 +89,7 @@ Layout is a fixed-height grid filling the viewport (no page scroll):
   frame is visible. Below the track: current time (left), total duration (right).
 - Transport bar (64px), three groups separated by space, every button with a tooltip naming its
   key:
-  - Left: Play/Pause (44px round), then "−10s" and "+10s" icon buttons, then "‹ Clip N ›" as
+  - Left: Play/Pause (44px round), then "−5s" and "+5s" icon buttons (the only seek step), then "‹ Clip N ›" as
     three separate buttons (prev, label, next; the label opens the clip in the editor).
   - Center: the mark button (56px round, green ring idle, orange with a stop square while
     marking) with the caption "Space" under it in secondary grey.
@@ -131,7 +131,9 @@ padding inside the sidebar. Use the layout's own whitespace rather than borders 
   same three values. The speed persists across seeks and clip navigation until changed.
   A "2× speed" badge with a fast-forward icon shows in the top-left corner of the video frame
   while the speed is above 1×.
-- Seeking clamps to [0, duration]. All seeks go through one `seek(t)` helper.
+- Seeking: one step only, 5 s back or forward (arrow keys, or the two transport buttons). No
+  1 s, 10 s or frame-step seeks: the trim nudges in the clip editor cover fine adjustment.
+  Seeks clamp to [0, duration] and all go through one `seek(t)` helper.
 - Prev/next clip seeks to the target clip's start, selects it, and keeps the current play state.
   "Next" from after the last clip wraps to the first; "Prev" within the first 1 s of a clip goes
   to the previous clip, otherwise to the current clip's start (music-player rule).
@@ -145,9 +147,6 @@ padding inside the sidebar. Use the layout's own whitespace rather than borders 
 | K or click video | Play / pause |
 | Double-click clip row | Play that clip only |
 | ← / → | Seek −5 s / +5 s |
-| Shift+← / Shift+→ | Seek −1 s / +1 s |
-| J / L | Seek −10 s / +10 s |
-| , / . | Step one frame back / forward while paused (assume 30 fps) |
 | ↑ / ↓ or [ / ] | Previous / next clip |
 | S | Cycle sticky speed 1× / 1.5× / 2× |
 | E | Edit selected clip |

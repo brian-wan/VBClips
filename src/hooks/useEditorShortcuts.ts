@@ -4,7 +4,6 @@ export type EditorShortcutHandlers = {
   mark: () => void
   togglePlay: () => void
   seekBy: (seconds: number) => void
-  stepFrame: (direction: -1 | 1) => void
   prevClip: () => void
   nextClip: () => void
   cycleSpeed: () => void
@@ -96,10 +95,10 @@ export function useEditorShortcuts(handlers: EditorShortcutHandlers): void {
 function dispatchKey(e: KeyboardEvent, h: EditorShortcutHandlers): boolean {
   switch (e.key) {
     case 'ArrowLeft':
-      h.seekBy(e.shiftKey ? -1 : -5)
+      h.seekBy(-5)
       return true
     case 'ArrowRight':
-      h.seekBy(e.shiftKey ? 1 : 5)
+      h.seekBy(5)
       return true
     case 'ArrowUp':
     case '[':
@@ -108,12 +107,6 @@ function dispatchKey(e: KeyboardEvent, h: EditorShortcutHandlers): boolean {
     case 'ArrowDown':
     case ']':
       h.nextClip()
-      return true
-    case ',':
-      h.stepFrame(-1)
-      return true
-    case '.':
-      h.stepFrame(1)
       return true
     case 'Delete':
     case 'Backspace':
@@ -129,12 +122,6 @@ function dispatchKey(e: KeyboardEvent, h: EditorShortcutHandlers): boolean {
   switch (e.key.toLowerCase()) {
     case 'k':
       h.togglePlay()
-      return true
-    case 'j':
-      h.seekBy(-10)
-      return true
-    case 'l':
-      h.seekBy(10)
       return true
     case 's':
       h.cycleSpeed()

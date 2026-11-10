@@ -49,7 +49,7 @@ sidebar becomes an overlay behind a toggle in the top bar.
 - Scrubber: hover for the time, click to seek, drag the playhead to scrub. Click a clip segment to
   select it; the selected clip shows two handles you drag to trim its start or end, and the video
   follows the handle so you can see the frame.
-- Transport bar: play/pause, back and forward 10 s, previous / current / next clip, the mark
+- Transport bar: play/pause, back and forward 5 s, previous / current / next clip, the mark
   button (Space), the 1× / 1.5× / 2× speed control, Add clip (a 2 s clip at the playhead), and
   the shortcuts list. Hover any button to see its key.
 - Clips sidebar: click a row to select it and jump to its start, double-click to play just that
@@ -91,22 +91,19 @@ assets in `dist/assets/`, so the app never loads them from a CDN and works offli
 
 ## Keyboard shortcuts
 
-| Key                          | Action                                                     |
-| ---------------------------- | ---------------------------------------------------------- |
-| Space                        | Mark start / mark end                                      |
-| K or click video             | Play / pause                                               |
-| Double-click clip row        | Play that clip only                                        |
-| ← / →                        | Seek −5 s / +5 s                                           |
-| Shift+← / Shift+→            | Seek −1 s / +1 s                                           |
-| J / L                        | Seek −10 s / +10 s                                         |
-| , / .                        | Step one frame back / forward while paused (assume 30 fps) |
-| ↑ / ↓ or [ / ]               | Previous / next clip                                       |
-| S                            | Cycle sticky speed 1× / 1.5× / 2×                          |
-| E                            | Edit selected clip                                         |
-| Delete / Backspace           | Delete selected clip                                       |
-| Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z | Undo / redo                                                |
-| Esc                          | Cancel open marker, close dialog, else deselect clip       |
-| ?                            | Show shortcuts                                             |
+| Key                          | Action                                               |
+| ---------------------------- | ---------------------------------------------------- |
+| Space                        | Mark start / mark end                                |
+| K or click video             | Play / pause                                         |
+| Double-click clip row        | Play that clip only                                  |
+| ← / →                        | Seek −5 s / +5 s                                     |
+| ↑ / ↓ or [ / ]               | Previous / next clip                                 |
+| S                            | Cycle sticky speed 1× / 1.5× / 2×                    |
+| E                            | Edit selected clip                                   |
+| Delete / Backspace           | Delete selected clip                                 |
+| Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z | Undo / redo                                          |
+| Esc                          | Cancel open marker, close dialog, else deselect clip |
+| ?                            | Show shortcuts                                       |
 
 Shortcuts are ignored while focus is in a text input.
 

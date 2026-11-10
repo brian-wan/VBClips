@@ -73,7 +73,7 @@ export const FastForward = (p: IconProps) => (
   </Svg>
 )
 
-const SkipTen = ({ forward, ...p }: IconProps & { forward?: boolean }) => (
+const SkipFive = ({ forward, ...p }: IconProps & { forward?: boolean }) => (
   <Svg {...p}>
     <g transform={forward ? 'translate(24 0) scale(-1 1)' : undefined}>
       <path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" />
@@ -89,13 +89,13 @@ const SkipTen = ({ forward, ...p }: IconProps & { forward?: boolean }) => (
       stroke="none"
       fontFamily="var(--font-family)"
     >
-      10
+      5
     </text>
   </Svg>
 )
 
-export const Back10 = (p: IconProps) => <SkipTen {...p} />
-export const Forward10 = (p: IconProps) => <SkipTen {...p} forward />
+export const Back5 = (p: IconProps) => <SkipFive {...p} />
+export const Forward5 = (p: IconProps) => <SkipFive {...p} forward />
 
 export const Volleyball = ({ size = 96 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">

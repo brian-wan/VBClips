@@ -1,8 +1,8 @@
 import {
-  Back10,
+  Back5,
   ChevronLeft,
   ChevronRight,
-  Forward10,
+  Forward5,
   PauseIcon,
   PlayIcon,
   Plus,
@@ -64,20 +64,20 @@ export function TransportBar({
           <button
             type="button"
             className={`${iconTip} ${styles.secondary}`}
-            aria-label="Back 10 seconds"
-            data-tip="Back 10 s (J)"
-            onClick={() => onSeekBy(-10)}
+            aria-label="Back 5 seconds"
+            data-tip="Back 5 s (←)"
+            onClick={() => onSeekBy(-5)}
           >
-            <Back10 size={24} strokeWidth={1.8} />
+            <Back5 size={24} strokeWidth={1.8} />
           </button>
           <button
             type="button"
             className={`${iconTip} ${styles.secondary}`}
-            aria-label="Forward 10 seconds"
-            data-tip="Forward 10 s (L)"
-            onClick={() => onSeekBy(10)}
+            aria-label="Forward 5 seconds"
+            data-tip="Forward 5 s (→)"
+            onClick={() => onSeekBy(5)}
           >
-            <Forward10 size={24} strokeWidth={1.8} />
+            <Forward5 size={24} strokeWidth={1.8} />
           </button>
         </div>
         <div className={styles.clipNav} role="group" aria-label="Clip navigation">
