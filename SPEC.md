@@ -32,6 +32,8 @@ decisions. If something here is impossible, say so in the report instead of impr
    below.
 7. Hosting prep: host config, license, installable app, README deploy section. Details in
    "Phase 7: Hosting prep" below.
+8. Fast file access for Join: stage the source in the browser's private file system, and keep
+   variable frame rate in Precise. Details in "Phase 8: Join speed" below.
 
 ## Screens
 
@@ -854,3 +856,62 @@ installable as an app. It adds no backend, no accounts and no analytics.
   (observe via `performance.getEntriesByType('resource')` transfer sizes). Validate `netlify.toml`
   by reading it against Netlify's documented schema; no account is created.
 - Whole suite, lint, typecheck, format check pass.
+
+## Phase 8: Join speed
+
+Settled, from measurements on the user's own file (a 63 s, 2392×1842, variable-frame-rate macOS
+screen recording in `~/Downloads`) and on a generated 1080p file.
+
+### The problem
+
+- Joining two 3 s clips in Fast mode took 157 s in the browser; the same two ffmpeg commands take
+  0.2 s natively and 30 ms in ffmpeg.wasm when the input is already in memory.
+- The cause is not ffmpeg. In Chrome on macOS, every read of a byte range of a `File` picked from
+  the user's own folders (`~/Downloads`, `~/Desktop`, `~/Movies` all measured) costs about one
+  second, whatever the size (4 KB, 32 KB, 8 MB all about 1 s), on the main thread and with
+  `FileReaderSync` in a worker alike. The same file copied under `/private/tmp` reads in 1 ms.
+  Reading the whole file in one request is fast (25 MB in 137 ms). ffmpeg.wasm's WORKERFS mount
+  reads the input in many small slices, so a stream copy of a few hundred packets takes minutes.
+- Precise mode re-encodes variable-frame-rate input to a constant 120 fps (ffmpeg 5.1's default
+  for mp4 output), encoding 695 frames where the source had 261. That doubles the work and makes a
+  120 fps 2392×1842 file that players struggle to decode, which reads as stutter or slow motion.
+
+### Staging the source
+
+- Before mounting, Join copies each source once into the Origin Private File System with a single
+  streaming read in a worker (`file.stream()` → `FileSystemSyncAccessHandle.write`), then mounts
+  the staged `File` (`handle.getFile()`) in WORKERFS. Measured: 25 MB in 41 ms, 243 MB in 297 ms
+  (820 MB/s); slices of the staged file read in 0.2 ms.
+- Staged copies live under an OPFS directory `vbclipper-stage/`, named by source fingerprint, and
+  are reused by later joins in the same editor session. They are deleted when the editor exits
+  (Home button, Back, error boundary exit) and any leftovers are deleted on app start.
+- Before staging, check `navigator.storage.estimate()`: if `quota - usage` is under the total
+  source size plus 10%, or OPFS or `createSyncAccessHandle` is unavailable (older Safari), skip
+  staging and mount the original `File` as today, and add one line to the dialog summary:
+  "This browser cannot cache the video, so joining may be slow."
+- Progress: a new `stage` phase ("Preparing video · 1.2 of 4.0 GB") before `cut`, work in bytes,
+  rate learned like the others (default 500 MB/s, stored key `stage`). Cancel aborts the stream
+  and removes the partial staged file.
+- Pure parts (`src/lib/join/stage.ts`: directory and file naming, quota rule, progress math) are
+  unit tested; the worker code has a test with a fake stream and access handle.
+
+### Precise keeps the source timing
+
+- Precise segment arguments gain `-fps_mode passthrough` (ffmpeg 5.1 supports it) and
+  `-avoid_negative_ts make_zero`, so frames are neither duplicated nor dropped and each segment's
+  container duration matches its last frame. Measured on the screen recording: 261 frames instead
+  of 695, cuts 4.3 s instead of 8.7 s, output 660 KB instead of 781 KB, timing identical to the
+  source. Constant-frame-rate phone video is unaffected.
+- The concat step is unchanged. A test asserts the new arguments; the browser check compares the
+  join's video packet timestamps with the source's over the clip range (no duplicates, no gaps the
+  source does not have).
+
+### Verification
+
+- Unit tests as above, whole suite, lint, typecheck, format, build.
+- Headless Chrome against `pnpm preview` with the user's `~/Downloads/reflow_override.mov`
+  (read-only; copy nothing into the repo): Fast join of two 3 s clips must finish in under 5 s
+  including staging (was 157 s), Precise in under 15 s (was 114 s); the staged file is present in
+  OPFS during the editor session and gone after Home; a second join reuses it (no `stage` phase);
+  with OPFS blocked (override `navigator.storage.getDirectory` to throw), the join still completes
+  through the direct mount and the summary shows the one-line note.
