@@ -945,11 +945,18 @@ the join or the shortcuts changes; keyboard shortcuts keep working when a keyboa
   inside the panel; the clip editor with the trim strip stays pinned at the panel's bottom when a
   clip is selected, as on desktop.
 - Landscape phones (height under 500px): the video cap drops to 30% and the clips panel may get
-  as little as 120px; it still scrolls.
+  as little as 120px; it still scrolls. Known limit, accepted: a phone that is both under
+  700px wide and under 500px tall (older small phones in landscape) cannot honor both the video
+  cap and the 120px panel minimum; the panel minimum wins and the video may collapse. Modern phones
+  are over 700px wide in landscape and get the tablet layout.
 - The mark button is 56px round in the transport bar's center; its caption reads "Mark" on
-  touch instead of "Space". The 5 s buttons, clip navigation and speed control stay; the "?"
-  shortcuts button is hidden on touch (nothing to list), and the top-bar Join button keeps its
-  text where it fits.
+  touch instead of "Space", which makes the phone transport bar 74px tall (accepted, as in Phase
+  4). Ten controls cannot each be 44px wide on a 390px phone, so on phones the transport bar is
+  one row of six: Play, Previous clip, the clip label, Next clip, Mark, and a single speed button
+  that shows the current speed and cycles 1× → 1.5× → 2× on tap. The two 5 s seek buttons are
+  hidden on phones (the filmstrip is the seek control by touch) and so is the "?" shortcuts
+  button. Every control is then at least 44px wide down to 340px of viewport width. The top-bar
+  Join button keeps its text where it fits.
 
 ### Tablet layout (700 to 1023px)
 
@@ -968,7 +975,11 @@ the join or the shortcuts changes; keyboard shortcuts keep working when a keyboa
   pointer is coarse; `aria-label`s stay so screen readers are unchanged. The trim strip shows a
   one-line caption under it on touch: "Drag the handles to trim" (replaces the key hint).
 - Long press on a clip row is not used; a tap selects, a second tap on the selected row plays that
-  clip only (the desktop double-click). Strip drags, header reorder and the plus tile work by touch
+  clip only (the desktop double-click). On touch the row trash shows on the selected row only; the ×
+  that removes a video stays visible with its hit area extended upward, away from the filmstrip.
+  The playhead grab distance on touch stays 12px (a tap on the bare strip scrubs anyway). The
+  plus tile is 48×56 on phones to match the filmstrip. The empty list reads "Tap Mark at the
+  start of a point" on touch. `viewport-fit=cover` is set so the safe-area insets take effect. Strip drags, header reorder and the plus tile work by touch
   as they do by mouse (pointer events already handle both); `-webkit-touch-callout: none` and
   `user-select: none` on the strips so a long drag never opens the callout or selects text.
 - The Join dialog is full-screen on phones (no backdrop margin) with 44px buttons. On touch
