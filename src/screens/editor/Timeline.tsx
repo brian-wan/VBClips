@@ -432,12 +432,8 @@ export function Timeline({
                   onPointerDown={onStripDown}
                   onPointerMove={onStripMove}
                   onPointerLeave={() => setHover(null)}
-                  role="slider"
-                  aria-label={`Seek in ${source.name}`}
-                  aria-valuemin={0}
-                  aria-valuemax={source.duration}
-                  aria-valuenow={isCurrent ? location.localTime : 0}
-                  aria-valuetext={formatTime(currentTime)}
+                  // Pointer only: the seek keys and clip navigation are the keyboard path.
+                  aria-hidden="true"
                 >
                   {renderBlockBody(source, index, false)}
                 </div>

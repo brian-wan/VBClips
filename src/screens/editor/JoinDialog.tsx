@@ -48,6 +48,20 @@ type State =
 
 const LOG_TAIL = 20
 
+/**
+ * What screen readers hear: one line per phase, never the label itself, which changes with every
+ * downloaded chunk and every clip.
+ */
+const PHASE_ANNOUNCEMENTS: Record<JoinEvent['phase'], string> = {
+  download: 'Downloading ffmpeg',
+  start: 'Starting ffmpeg',
+  cut: 'Cutting clips',
+  concat: 'Combining clips',
+  save: 'Saving',
+  fallback: 'Switched to Precise: re-encoding',
+  done: '',
+}
+
 /** Read in event handlers only; React's purity lint cannot tell `start` is one. */
 const clock = () => performance.now()
 
@@ -277,7 +291,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
 
         {state.kind === 'done' && (
           <>
-            <div className={styles.result}>
+            <div className={styles.result} role="status">
               <p className={styles.resultTitle}>Saved {state.result.name}</p>
               <p className={styles.resultDetail}>{formatBytes(state.result.size)}</p>
             </div>
@@ -367,11 +381,15 @@ function Progress({
   onKeepGoing,
 }: ProgressProps) {
   const percent = percentOf(event.progress)
+  const announcement = PHASE_ANNOUNCEMENTS[event.phase]
 
   return (
     <>
       {fellBack && <p className={styles.note}>{FALLBACK_REASON}</p>}
       <div className={styles.progress}>
+        <span className={ui.visuallyHidden} role="status">
+          {announcement}
+        </span>
         <div className={styles.progressRow}>
           <span className={styles.label}>{event.label}</span>
           <span className={styles.percent}>{percent}%</span>

@@ -269,7 +269,7 @@
 }
 
 .plus:disabled {
-  color: var(--color-text-secondary);
+  color: var(--color-text-secondary-raised);
   cursor: progress;
 }
 

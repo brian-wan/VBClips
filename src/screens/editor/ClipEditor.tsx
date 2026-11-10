@@ -1,4 +1,11 @@
-import { forwardRef, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import {
+  forwardRef,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent,
+} from 'react'
 import { Filmstrip } from '../../components/Filmstrip'
 import { ProgressLine } from '../../components/ProgressLine'
 import ui from '../../components/ui.module.css'
@@ -32,6 +39,9 @@ type Props = {
 type Drag = { edge: TrimEdge; original: Clip; draft: Clip; offset: number }
 
 type View = { start: number; end: number; window: Span }
+
+/** How far one arrow press moves an edge of the focused trim strip. */
+const KEY_STEP_S = 0.1
 
 const percent = (t: number, window: Span) => `${(xOfTime(t, 1, window) * 100).toFixed(3)}%`
 
@@ -117,6 +127,21 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
     onSeek(edgeTime(clip, edge))
   }
 
+  // ← / → move the start, Shift+← / Shift+→ the end, each press one undo step.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    if (e.metaKey || e.ctrlKey || e.altKey) return
+    e.preventDefault()
+    e.stopPropagation()
+    if (drag) return
+    const edge: TrimEdge = e.shiftKey ? 'end' : 'start'
+    const step = e.key === 'ArrowLeft' ? -KEY_STEP_S : KEY_STEP_S
+    const next = trimClip(clip, edge, edgeTime(clip, edge) + step, source.duration)
+    if (next.start === clip.start && next.end === clip.end) return
+    onChange(next)
+    onSeek(edgeTime(next, edge))
+  }
+
   const handleCursor = drag ? 'ew-resize' : undefined
   const playheadInside = playhead !== null && playhead >= span.start && playhead <= span.end
 
@@ -129,13 +154,26 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
 
       <div className={styles.trim}>
         <div
-          className={styles.strip}
+          className={`${styles.strip} ${drag ? '' : ui.tip}`}
           style={{ cursor: handleCursor }}
           {...trimDrag.props}
           onPointerDown={onPointerDown}
+          // Tab reaches it, a click does not focus it, so the arrows still seek after a click.
+          onMouseDown={(e) => e.preventDefault()}
+          onKeyDown={onKeyDown}
           role="group"
+          tabIndex={0}
           aria-label={`Trim clip ${number}`}
+          aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight"
         >
+          <span className={ui.tipBubble} aria-hidden="true">
+            Start
+            <kbd className={ui.kbd}>←</kbd>
+            <kbd className={ui.kbd}>→</kbd>
+            End
+            <kbd className={ui.kbd}>Shift ←</kbd>
+            <kbd className={ui.kbd}>Shift →</kbd>
+          </span>
           <div ref={trackRef} className={styles.track}>
             <Filmstrip
               sourceId={source.id}

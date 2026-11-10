@@ -5,6 +5,8 @@
   --color-separator: #38383a;
   --color-text: #ffffff;
   --color-text-secondary: #8e8e93;
+  /* Secondary text on --color-surface-raised, where #8e8e93 falls short of 4.5:1. */
+  --color-text-secondary-raised: #a1a1a6;
   --color-accent: #ff9f0a;
   --color-mark: #30d158;
   --color-link: #0a84ff;

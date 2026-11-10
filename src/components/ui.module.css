@@ -157,6 +157,24 @@
   white-space: nowrap;
 }
 
+/* Tooltips sit on the raised surface. */
+.tipBubble .kbd {
+  color: var(--color-text-secondary-raised);
+}
+
+/* Read by screen readers, not shown. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /*
  * Tooltip: put `tip` on the control (or a wrapper of a disabled one) and render <Tip> inside it.
  * Shows after a short hover delay, or at once on keyboard focus. Add `tipBelow` for controls near

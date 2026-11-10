@@ -82,9 +82,12 @@
   font-weight: 600;
 }
 
-.modeDetail,
 .muted {
   color: var(--color-text-secondary);
+}
+
+.modeDetail {
+  color: var(--color-text-secondary-raised);
 }
 
 .warning,

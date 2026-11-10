@@ -1,3 +1,4 @@
+import { useRef, type KeyboardEvent } from 'react'
 import {
   Back5,
   ChevronLeft,
@@ -29,6 +30,14 @@ type Props = {
 
 const iconTip = `${ui.iconButton} ${ui.tip}`
 
+/** Arrow keys in the speed group, as in the ARIA radio group pattern. */
+const ARROW_STEP: Partial<Record<string, number>> = {
+  ArrowRight: 1,
+  ArrowDown: 1,
+  ArrowLeft: -1,
+  ArrowUp: -1,
+}
+
 export function TransportBar({
   paused,
   marking,
@@ -44,6 +53,21 @@ export function TransportBar({
   onSpeed,
   onShowShortcuts,
 }: Props) {
+  const speedButtons = useRef<(HTMLButtonElement | null)[]>([])
+  // The speed group is one tab stop, on the checked segment; arrows move the check and focus.
+  const onSpeedKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = ARROW_STEP[e.key]
+    if (step === undefined || e.metaKey || e.ctrlKey || e.altKey) return
+    e.preventDefault()
+    e.stopPropagation()
+    const count = SPEEDS.length
+    const index = (SPEEDS.findIndex((s) => s === speed) + step + count) % count
+    const next = SPEEDS[index]
+    if (next === undefined) return
+    onSpeed(next)
+    speedButtons.current[index]?.focus()
+  }
+
   return (
     <div className={styles.bar}>
       <div className={styles.group}>
@@ -125,13 +149,22 @@ export function TransportBar({
       </div>
 
       <div className={`${styles.cluster} ${styles.end}`}>
-        <div className={styles.segmented} role="radiogroup" aria-label="Playback speed">
-          {SPEEDS.map((s) => (
+        <div
+          className={styles.segmented}
+          role="radiogroup"
+          aria-label="Playback speed"
+          onKeyDown={onSpeedKey}
+        >
+          {SPEEDS.map((s, i) => (
             <button
               key={s}
+              ref={(el) => {
+                speedButtons.current[i] = el
+              }}
               type="button"
               role="radio"
               aria-checked={s === speed}
+              tabIndex={s === speed ? 0 : -1}
               className={`${ui.tip} ${styles.segment} ${s === speed ? styles.segmentActive : ''}`}
               onClick={() => onSpeed(s)}
             >

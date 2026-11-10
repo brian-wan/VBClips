@@ -45,43 +45,43 @@ export const ClipsList = memo(function ClipsList({
       {clips.length === 0 ? (
         <p className={styles.empty}>No clips yet. Press Space to mark the start of a point.</p>
       ) : (
-        <ul ref={listRef} className={styles.list} role="listbox" aria-label="Clips">
+        <ul ref={listRef} className={styles.list} aria-label="Clips">
           {clips.map((clip, i) => (
             <li
               key={clip.id}
               data-clip-id={clip.id}
-              role="option"
-              aria-selected={clip.id === selectedId}
               className={`${styles.row} ${clip.id === selectedId ? styles.selected : ''}`}
-              onClick={() => onSelect(clip)}
-              onDoubleClick={() => onPlay(clip)}
-              title="Click to select, double-click to play this clip"
             >
-              <span className={styles.name}>Clip {i + 1}</span>
-              <span className={styles.dotCell}>
-                {overlapping.has(clip.id) && (
-                  <span
-                    className={styles.overlap}
-                    role="img"
-                    aria-label="Overlaps another clip"
-                    title="Overlaps another clip"
-                  />
-                )}
-              </span>
-              <span className={styles.range}>
-                {formatTimePrecise(clip.start)} → {formatTimePrecise(clip.end)}
-              </span>
-              <span className={styles.duration}>{formatTimePrecise(clipDuration(clip))}</span>
+              <button
+                type="button"
+                className={styles.select}
+                aria-current={clip.id === selectedId ? 'true' : undefined}
+                onClick={() => onSelect(clip)}
+                onDoubleClick={() => onPlay(clip)}
+                title="Click to select, double-click to play this clip"
+              >
+                <span className={styles.name}>Clip {i + 1}</span>
+                <span className={styles.dotCell}>
+                  {overlapping.has(clip.id) && (
+                    <span
+                      className={styles.overlap}
+                      role="img"
+                      aria-label="Overlaps another clip"
+                      title="Overlaps another clip"
+                    />
+                  )}
+                </span>
+                <span className={styles.range}>
+                  {formatTimePrecise(clip.start)} → {formatTimePrecise(clip.end)}
+                </span>
+                <span className={styles.duration}>{formatTimePrecise(clipDuration(clip))}</span>
+              </button>
               <button
                 type="button"
                 className={styles.trash}
                 aria-label={`Delete clip ${i + 1}`}
                 title={`Delete clip ${i + 1} (Delete)`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDelete(clip)
-                }}
-                onDoubleClick={(e) => e.stopPropagation()}
+                onClick={() => onDelete(clip)}
               >
                 <Trash size={16} />
               </button>
