@@ -242,7 +242,8 @@ with ffmpeg.wasm; no upload, no server.
   adapter terminates it, loads the single-thread core, remembers that choice for the rest of the
   page's life, and emits a log line "Multi-thread core did not start; using the single-thread
   core" that the dialog shows under the progress bar. A join must never wait forever on
-  "Loading ffmpeg": after 5 s in that phase the dialog adds "First load downloads about 30 MB".
+  "Loading ffmpeg" while a loaded core restarts; while the core files download, the label shows
+  the real byte count (Phase 5), which replaced the old "First load downloads about 30 MB" hint.
 - `vite.config.ts` sets `Cross-Origin-Opener-Policy: same-origin` and
   `Cross-Origin-Embedder-Policy: require-corp` on both `server` and `preview` so the
   multi-threaded core can use `SharedArrayBuffer` in dev. Document in the README that static hosts
@@ -577,7 +578,8 @@ comes from measured speed, not a guess. Where this conflicts with "Join dialog" 
 - **Percent** is `Math.floor(fraction * 100)`, rises monotonically within a run (a later lower
   value is clamped to the last shown), and reads 100% only when the Blob exists. The only reset is
   the Fast-to-Precise fallback: the bar restarts at the end of the download share with the label
-  "Switched to Precise: re-encoding" and the Precise rates.
+  "Switched to Precise: re-encoding" and the Precise rates. During those cuts the label reads
+  "Switched to Precise: re-encoding clip 3 of 12" so the clip count stays visible.
 - **Phase label** above the bar: "Downloading ffmpeg · 12.3 of 31.5 MB", "Cutting clip 3 of 12",
   "Combining clips", "Saving", then "Saved <name>". When the download total is unknown (no
   Content-Length), show bytes received and treat the download work as 31 MB.
@@ -589,7 +591,8 @@ comes from measured speed, not a guess. Where this conflicts with "Join dialog" 
   `ffmpeg.load` blob URLs for all of them (as `@ffmpeg/util`'s `toBlobURL` does). Blob URLs are
   cached for the page so a second join skips the phase. The 8 s multi-thread timeout and the
   single-thread fallback stay exactly as specified in Phase 2; a fallback does not re-download
-  files it already has.
+  files it already has. The 8 s timeout covers starting the multi-thread core only, not the
+  download before it, so a slow network never forces the single-thread core.
 - `FFmpegLike.load` gains an optional `onProgress({ received, total })` callback so the runner can
   feed the model; the test fake records it.
 
@@ -609,7 +612,8 @@ comes from measured speed, not a guess. Where this conflicts with "Join dialog" 
   files for Continue Session reads "Opening 2 of 3…" and the bar is determinate, files done over
   files total.
 - **Editor plus tile**: while an added file is being probed the tile shows a spinner glyph and is
-  disabled; the same "Opening…" count applies for several files.
+  disabled; the "Opening…" text and the "2 of 3" count live in its tooltip and aria-label, since
+  the 48px tile has no room for text.
 - **Preview frames**: `ThumbnailStore` exposes `progress(sourceId): { done, total }` and notifies
   subscribers as frames land. While a block's frames are incomplete its header shows
   "Preparing frames 12/25" in caption colour after the duration, and a 2px accent progress line
