@@ -247,12 +247,12 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
               </p>
             )}
             <div className={styles.actions}>
-              <button type="button" className={ui.pillSecondary} onClick={onClose}>
+              <button type="button" className={ui.secondary} onClick={onClose}>
                 Cancel
               </button>
               <button
                 type="button"
-                className={ui.pill}
+                className={ui.primary}
                 disabled={tooLarge || segments.length === 0}
                 onClick={() => void start(mode)}
               >
@@ -287,12 +287,12 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
             <div className={styles.actions}>
               <button
                 type="button"
-                className={ui.pillSecondary}
+                className={ui.secondary}
                 onClick={() => downloadUrl(state.result.url, state.result.name)}
               >
                 Save again
               </button>
-              <button type="button" className={ui.pill} onClick={onClose}>
+              <button type="button" className={ui.primary} onClick={onClose}>
                 Done
               </button>
             </div>
@@ -312,7 +312,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
               {state.failure.log.length > 0 && (
                 <button
                   type="button"
-                  className={ui.pillSecondary}
+                  className={ui.secondary}
                   onClick={() => void copyLog(state.failure.log)}
                 >
                   {copied ? 'Copied' : 'Copy log'}
@@ -320,7 +320,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
               )}
               <button
                 type="button"
-                className={state.failure.mode === 'fast' ? ui.pillSecondary : ui.pill}
+                className={state.failure.mode === 'fast' ? ui.secondary : ui.primary}
                 onClick={() => setState({ kind: 'setup' })}
               >
                 Back
@@ -328,7 +328,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
               {state.failure.mode === 'fast' && (
                 <button
                   type="button"
-                  className={ui.pill}
+                  className={ui.primary}
                   onClick={() => {
                     setMode('precise')
                     void start('precise')
@@ -429,15 +429,15 @@ function Progress({
         {confirmingStop ? (
           <>
             <span className={styles.confirm}>Stop joining?</span>
-            <button type="button" className={ui.pillSecondary} onClick={onKeepGoing}>
+            <button type="button" className={ui.secondary} onClick={onKeepGoing}>
               Keep joining
             </button>
-            <button type="button" className={ui.pillDestructive} onClick={onConfirmStop}>
+            <button type="button" className={ui.destructive} onClick={onConfirmStop}>
               Stop
             </button>
           </>
         ) : (
-          <button type="button" className={ui.pillSecondary} onClick={onStop}>
+          <button type="button" className={ui.secondary} onClick={onStop}>
             Stop
           </button>
         )}

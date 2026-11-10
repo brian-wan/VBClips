@@ -175,7 +175,7 @@ export function Home({ onOpen, error, onError }: Props) {
 
       <button
         type="button"
-        className={`${ui.pill} ${styles.choose}`}
+        className={`${ui.primary} ${styles.choose}`}
         onClick={() => openPicker('new')}
       >
         Choose Video
@@ -209,20 +209,24 @@ export function Home({ onOpen, error, onError }: Props) {
                 {formatTime(totalClippedDuration(saved.clips))} clipped
               </span>
             </span>
-            <ChevronRight className={styles.chevron} />
+            <ChevronRight size={16} className={styles.chevron} />
           </button>
           {confirmDelete ? (
-            <button type="button" className={styles.confirmDelete} onClick={deleteSaved}>
+            <button
+              type="button"
+              className={`${ui.destructive} ${ui.small} ${styles.confirmDelete}`}
+              onClick={deleteSaved}
+            >
               Delete?
             </button>
           ) : (
             <button
               type="button"
-              className={styles.trash}
+              className={`${ui.iconButton} ${styles.trash}`}
               aria-label="Delete saved session"
               onClick={() => setConfirmDelete(true)}
             >
-              <Trash />
+              <Trash size={18} />
             </button>
           )}
         </div>
@@ -240,13 +244,17 @@ export function Home({ onOpen, error, onError }: Props) {
         <div className={styles.mismatch} role="status">
           <p>Still needed: {missing.map((s) => s.name).join(', ')}</p>
           <div className={styles.mismatchActions}>
-            <button type="button" className={ui.pillSmall} onClick={() => openPicker('continue')}>
+            <button
+              type="button"
+              className={`${ui.primary} ${ui.small}`}
+              onClick={() => openPicker('continue')}
+            >
               Pick files
             </button>
             {found.size > 0 && (
               <button
                 type="button"
-                className={ui.pillSecondary + ' ' + styles.small}
+                className={`${ui.secondary} ${ui.small}`}
                 onClick={() => void openSaved(saved, found)}
               >
                 Open without them
@@ -265,14 +273,14 @@ export function Home({ onOpen, error, onError }: Props) {
           <div className={styles.mismatchActions}>
             <button
               type="button"
-              className={ui.pillSmall}
+              className={`${ui.primary} ${ui.small}`}
               onClick={() => void openWithReplacement(saved, mismatch)}
             >
               Use it anyway
             </button>
             <button
               type="button"
-              className={ui.pillSecondary + ' ' + styles.small}
+              className={`${ui.secondary} ${ui.small}`}
               onClick={() => openPicker('continue')}
             >
               Pick another
@@ -281,7 +289,11 @@ export function Home({ onOpen, error, onError }: Props) {
         </div>
       )}
 
-      <button type="button" className={ui.linkButton} onClick={() => setShowHelp(true)}>
+      <button
+        type="button"
+        className={`${ui.linkButton} ${styles.help}`}
+        onClick={() => setShowHelp(true)}
+      >
         How it works
       </button>
 

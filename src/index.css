@@ -12,25 +12,26 @@
   --color-destructive: #ff453a;
   --color-overlap: #ffd60a;
 
-  --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, system-ui, sans-serif;
-  --font-title: 34px;
-  --font-label: 17px;
-  --font-caption: 15px;
+  --font-family: Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-title: 24px;
+  --font-heading: 15px;
+  --font-body: 13px;
+  --font-caption: 12px;
+  --font-micro: 11px;
 
-  --radius-pill: 999px;
-  --height-pill: 48px;
-  --size-icon-button: 44px;
-  --radius-sheet: 24px;
+  --radius-control: 6px;
+  --radius-panel: 8px;
+  --control-height: 32px;
+  --control-height-small: 28px;
   --pressed-opacity: 0.85;
   --motion: 150ms ease-out;
   --motion-glyph: 400ms ease-out;
-  --font-tooltip: 13px;
-  --radius-card: 16px;
   --color-hover: #3a3a3c;
   --color-focus: var(--color-accent);
 
   color-scheme: dark;
   font-family: var(--font-family);
+  font-size: var(--font-body);
   color: var(--color-text);
   background: var(--color-bg);
   -webkit-font-smoothing: antialiased;

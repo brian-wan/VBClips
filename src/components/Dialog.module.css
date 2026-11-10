@@ -12,9 +12,12 @@
 .dialog {
   display: flex;
   flex-direction: column;
+  --secondary-background: var(--color-surface-raised);
+
   width: min(560px, 100%);
   max-height: min(720px, 100%);
-  border-radius: var(--radius-card);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-panel);
   background: var(--color-surface);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
   animation: rise var(--motion);
@@ -24,24 +27,25 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 24px;
+  padding: 12px 12px 12px 20px;
   border-bottom: 1px solid var(--color-separator);
 }
 
 .title {
   flex: 1;
   margin: 0;
-  font-size: var(--font-label);
+  font-size: var(--font-heading);
   font-weight: 600;
 }
 
 .done {
-  padding: 4px 8px;
+  height: var(--control-height);
+  padding: 0 12px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: none;
   color: var(--color-accent);
-  font-size: var(--font-label);
+  font-size: var(--font-body);
   font-weight: 600;
   cursor: pointer;
   transition:
@@ -50,7 +54,7 @@
 }
 
 .done:hover {
-  background: var(--color-surface-raised);
+  background: var(--color-hover);
 }
 
 .done:active {
@@ -59,7 +63,8 @@
 
 .body {
   overflow-y: auto;
-  padding: 16px 24px 24px;
+  padding: 20px;
+  font-size: var(--font-body);
 }
 
 @keyframes fade {

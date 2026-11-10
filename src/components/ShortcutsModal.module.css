@@ -7,14 +7,12 @@
 .intro {
   margin: 0;
   color: var(--color-text-secondary);
-  font-size: var(--font-caption);
   line-height: 1.4;
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--font-caption);
 }
 
 .table td {
@@ -26,6 +24,17 @@
 .table td.keys {
   width: 45%;
   padding-right: 12px;
-  color: var(--color-accent);
-  font-weight: 600;
+}
+
+.keyList {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-secondary);
+}
+
+/* Chips in the list read as keys to press, so they use full-contrast text. */
+.keyList kbd {
+  color: var(--color-text);
 }
