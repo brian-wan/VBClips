@@ -6,6 +6,8 @@ export type Segment = Span & { sourceIndex: number }
 
 /** The output is assembled in MEMFS, so anything bigger risks running the tab out of memory. */
 export const MAX_OUTPUT_BYTES = 1.5e9
+/** From this size the dialog warns that the browser may run out of memory. */
+export const LARGE_OUTPUT_BYTES = 500e6
 export const CONCAT_LIST = 'list.txt'
 
 /** Media seconds processed per wall-clock second before a rate has been measured. */

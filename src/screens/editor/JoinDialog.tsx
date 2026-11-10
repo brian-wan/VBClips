@@ -7,6 +7,7 @@ import { getFFmpeg } from '../../join/ffmpeg'
 import { formatBytes } from '../../lib/bytes'
 import type { Clip } from '../../lib/clips'
 import {
+  LARGE_OUTPUT_BYTES,
   MAX_OUTPUT_BYTES,
   estimateOutputBytes,
   estimateSeconds,
@@ -85,6 +86,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
     sources.map((s) => s.meta),
   )
   const tooLarge = estimatedBytes > MAX_OUTPUT_BYTES
+  const large = !tooLarge && estimatedBytes >= LARGE_OUTPUT_BYTES
   const name = outputFileName(sources[0]?.meta.name ?? 'video')
 
   const [mode, setMode] = useState<JoinMode>('fast')
@@ -210,7 +212,15 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
   return (
     <Dialog title="Join clips" width={520} closeLabel="Close" onClose={requestClose}>
       <div className={styles.content}>
-        <p className={styles.summary}>{summary}</p>
+        <p className={styles.summary}>
+          {summary}
+          {large && (
+            <>
+              <br />
+              Large output: the browser may run out of memory. Precise mode makes a smaller file.
+            </>
+          )}
+        </p>
 
         {state.kind === 'setup' && (
           <>

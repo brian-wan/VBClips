@@ -25,6 +25,7 @@ import {
 import { dropIndex, toSequence, type Location } from '../../lib/sequence'
 import type { OpenMarker, SourceMeta } from '../../lib/session'
 import { formatTime, formatTimePrecise } from '../../lib/time'
+import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { useFrameProgress, useThumbnails } from '../../media/thumbnails'
 import styles from './Timeline.module.css'
 
@@ -59,7 +60,6 @@ type StripDrag =
 
 type Reorder = {
   from: number
-  pointerId: number
   startX: number
   grabOffset: number
   width: number
@@ -183,19 +183,6 @@ export function Timeline({
   const [hover, setHover] = useState<{ x: number; t: number; target: ScrubberTarget } | null>(null)
   const [reorder, setReorder] = useState<Reorder | null>(null)
 
-  const reorderActive = reorder?.active ?? false
-  useEffect(() => {
-    if (!reorderActive) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.preventDefault()
-      e.stopPropagation()
-      setReorder(null)
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [reorderActive])
-
   const rowLeft = () => rowRef.current?.getBoundingClientRect().left ?? 0
 
   /** The block under `clientX`, or the nearest one when the pointer is in a gap or outside. */
@@ -242,11 +229,49 @@ export function Timeline({
     onSeekLocal(index, local)
   }
 
+  const stripDrag = usePointerDrag<HTMLDivElement>({
+    onMove: (e) => {
+      const hit = measure(e.clientX)
+      if (!drag || !hit) return
+      if (drag.kind === 'pending' && Math.abs(e.clientX - drag.startX) > DRAG_THRESHOLD_PX) {
+        startScrub(hit.index, hit.local)
+      } else if (drag.kind === 'scrub') {
+        onSeekLocal(hit.index, hit.local)
+      } else if (drag.kind === 'trim') {
+        const source = sources[drag.index]
+        const rect = source && stripRefs.current.get(source.id)?.getBoundingClientRect()
+        if (!source || !rect) return
+        const t = timeAtX(e.clientX - rect.left, rect.width, source.duration)
+        const draft = trimClip(drag.original, drag.edge, t, source.duration)
+        setDrag({ ...drag, draft, tipX: edgeX(drag.index, edgeTime(draft, drag.edge)) })
+        onSeekLocal(drag.index, edgeTime(draft, drag.edge))
+      }
+    },
+    onCommit: () => {
+      if (!drag) return
+      setDrag(null)
+      if (drag.kind === 'pending') {
+        onSelect(drag.id)
+        return
+      }
+      if (drag.kind === 'trim') onTrim(drag.draft)
+      onDragEnd()
+    },
+    // A cancelled trim puts the clip back as it was, still selected.
+    onCancel: () => {
+      if (!drag) return
+      setDrag(null)
+      if (drag.kind === 'pending') return
+      if (drag.kind === 'trim') onSeekLocal(drag.index, edgeTime(drag.original, drag.edge))
+      onDragEnd()
+    },
+  })
+
   const onStripDown = (e: PointerEvent<HTMLDivElement>) => {
     if (duration <= 0 || e.button !== 0) return
-    e.currentTarget.setPointerCapture(e.pointerId)
     const hit = measure(e.clientX)
     if (!hit) return
+    stripDrag.begin(e)
     const selected = clips.find((c) => c.id === selectedId)
     if (hit.target.kind === 'handle' && selected) {
       const index = sources.findIndex((s) => s.id === selected.sourceId)
@@ -271,34 +296,7 @@ export function Timeline({
   const onStripMove = (e: PointerEvent<HTMLDivElement>) => {
     const hit = measure(e.clientX)
     if (hit) setHover({ x: e.clientX - rowLeft(), t: hit.t, target: hit.target })
-    if (!drag || !hit) return
-    if (drag.kind === 'pending' && Math.abs(e.clientX - drag.startX) > DRAG_THRESHOLD_PX) {
-      startScrub(hit.index, hit.local)
-    } else if (drag.kind === 'scrub') {
-      onSeekLocal(hit.index, hit.local)
-    } else if (drag.kind === 'trim') {
-      const source = sources[drag.index]
-      const rect = stripRefs.current.get(source.id)?.getBoundingClientRect()
-      if (!rect) return
-      const t = timeAtX(e.clientX - rect.left, rect.width, source.duration)
-      const draft = trimClip(drag.original, drag.edge, t, source.duration)
-      setDrag({ ...drag, draft, tipX: edgeX(drag.index, edgeTime(draft, drag.edge)) })
-      onSeekLocal(drag.index, edgeTime(draft, drag.edge))
-    }
-  }
-
-  const endStripDrag = (e: PointerEvent<HTMLDivElement>, cancelled: boolean) => {
-    if (!drag) return
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId)
-    }
-    setDrag(null)
-    if (drag.kind === 'pending') {
-      if (!cancelled) onSelect(drag.id)
-      return
-    }
-    if (drag.kind === 'trim' && !cancelled) onTrim(drag.draft)
-    onDragEnd()
+    stripDrag.props.onPointerMove(e)
   }
 
   /** Insertion slot for a pointer at `clientX`: how many block midpoints lie left of it. */
@@ -308,14 +306,37 @@ export function Timeline({
       return rect ? rect.left + rect.width / 2 < clientX : false
     }).length
 
+  const headerDrag = usePointerDrag<HTMLDivElement>({
+    onMove: (e) => {
+      if (!reorder) return
+      const active = reorder.active || Math.abs(e.clientX - reorder.startX) > DRAG_THRESHOLD_PX
+      const slot = slotAt(e.clientX)
+      setReorder({
+        ...reorder,
+        active,
+        x: e.clientX - rowLeft(),
+        slot,
+        insertionX: active ? insertionLineX(reorder.from, slot) : null,
+      })
+    },
+    onCommit: () => {
+      if (!reorder) return
+      setReorder(null)
+      if (!reorder.active) return
+      const to = dropIndex(reorder.from, reorder.slot)
+      if (to !== reorder.from) onMoveSource(reorder.from, to)
+    },
+    onCancel: () => setReorder(null),
+  })
+
   const onHeaderDown = (e: PointerEvent<HTMLDivElement>, index: number) => {
     if (e.button !== 0) return
-    const rect = blockRefs.current.get(sources[index].id)?.getBoundingClientRect()
+    const source = sources[index]
+    const rect = source && blockRefs.current.get(source.id)?.getBoundingClientRect()
     if (!rect) return
-    e.currentTarget.setPointerCapture(e.pointerId)
+    headerDrag.begin(e)
     setReorder({
       from: index,
-      pointerId: e.pointerId,
       startX: e.clientX,
       grabOffset: e.clientX - rect.left,
       width: rect.width,
@@ -329,36 +350,14 @@ export function Timeline({
   const insertionLineX = (from: number, slot: number) => {
     if (dropIndex(from, slot) === from) return null
     const left = rowLeft()
+    const last = sources.at(-1)
     if (slot >= sources.length) {
-      const last = blockRefs.current.get(sources[sources.length - 1].id)?.getBoundingClientRect()
-      return last ? last.right - left + BLOCK_GAP_PX / 2 : null
+      const rect = last && blockRefs.current.get(last.id)?.getBoundingClientRect()
+      return rect ? rect.right - left + BLOCK_GAP_PX / 2 : null
     }
-    const rect = blockRefs.current.get(sources[slot].id)?.getBoundingClientRect()
+    const target = sources[slot]
+    const rect = target && blockRefs.current.get(target.id)?.getBoundingClientRect()
     return rect ? rect.left - left - BLOCK_GAP_PX / 2 : null
-  }
-
-  const onHeaderMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!reorder || reorder.pointerId !== e.pointerId) return
-    const active = reorder.active || Math.abs(e.clientX - reorder.startX) > DRAG_THRESHOLD_PX
-    const slot = slotAt(e.clientX)
-    setReorder({
-      ...reorder,
-      active,
-      x: e.clientX - rowLeft(),
-      slot,
-      insertionX: active ? insertionLineX(reorder.from, slot) : null,
-    })
-  }
-
-  const endReorder = (e: PointerEvent<HTMLDivElement>, cancelled: boolean) => {
-    if (!reorder || reorder.pointerId !== e.pointerId) return
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId)
-    }
-    setReorder(null)
-    if (cancelled || !reorder.active) return
-    const to = dropIndex(reorder.from, reorder.slot)
-    if (to !== reorder.from) onMoveSource(reorder.from, to)
   }
 
   const trimming = drag?.kind === 'trim' ? drag : null
@@ -475,10 +474,8 @@ export function Timeline({
                 <div
                   className={`${styles.header} ${reorder?.active ? styles.headerDragging : ''}`}
                   title={`${source.name}, drag to reorder`}
+                  {...headerDrag.props}
                   onPointerDown={(e) => onHeaderDown(e, index)}
-                  onPointerMove={onHeaderMove}
-                  onPointerUp={(e) => endReorder(e, false)}
-                  onPointerCancel={(e) => endReorder(e, true)}
                 >
                   {header(source, true)}
                 </div>
@@ -489,10 +486,9 @@ export function Timeline({
                   }}
                   className={styles.strip}
                   style={{ cursor }}
+                  {...stripDrag.props}
                   onPointerDown={onStripDown}
                   onPointerMove={onStripMove}
-                  onPointerUp={(e) => endStripDrag(e, false)}
-                  onPointerCancel={(e) => endStripDrag(e, true)}
                   onPointerLeave={() => setHover(null)}
                   role="slider"
                   aria-label={`Seek in ${source.name}`}

@@ -3,8 +3,10 @@ import { segmentArgs, type Segment } from './plan'
 import { RATES_KEY } from './progress'
 import {
   FALLBACK_REASON,
+  STALLED_MESSAGE,
   JoinCancelled,
   JoinError,
+  nextFrame,
   runJoin,
   type DownloadListener,
   type JoinOptions,
@@ -504,6 +506,38 @@ describe('runJoin', () => {
     expect(frames).toHaveLength(0)
   })
 
+  it('fails and terminates ffmpeg after 120 s without a log line or progress event', async () => {
+    vi.useFakeTimers()
+    try {
+      const ffmpeg = new FakeFFmpeg((args, fake) => {
+        if (args.at(-1) !== 'seg1.mp4') return 0
+        setTimeout(() => fake.emitLog('frame=  120'), 100_000)
+        return new Promise<number>(() => undefined)
+      })
+      const joining = run({ ffmpeg, files, segments, mode: 'fast' })
+      const outcome = joining.catch((e: unknown) => e)
+      await vi.advanceTimersByTimeAsync(219_999)
+      expect(ffmpeg.methods()).not.toContain('terminate')
+      await vi.advanceTimersByTimeAsync(1)
+      const error = await outcome
+      expect(error).toBeInstanceOf(JoinError)
+      expect((error as JoinError).message).toBe(STALLED_MESSAGE)
+      expect((error as JoinError).log).toEqual(['frame=  120'])
+      expect(ffmpeg.methods()).toContain('terminate')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reports a core that never starts as a join error', async () => {
+    const ffmpeg = new FakeFFmpeg()
+    ffmpeg.downloading = Promise.reject(new Error('ffmpeg did not start'))
+    const error = await run({ ffmpeg, files, segments, mode: 'precise' }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(JoinError)
+    expect((error as JoinError).message).toBe('ffmpeg did not start')
+    expect(ffmpeg.methods()).not.toContain('mount')
+  })
+
   it('does not start when already aborted', async () => {
     const controller = new AbortController()
     controller.abort()
@@ -518,5 +552,26 @@ describe('runJoin', () => {
     await expect(
       run({ ffmpeg: new FakeFFmpeg(), files, segments: [], mode: 'fast' }),
     ).rejects.toBeInstanceOf(JoinError)
+  })
+})
+
+describe('nextFrame', () => {
+  it('uses a 250 ms timer while the tab is hidden, where animation frames do not run', () => {
+    vi.useFakeTimers()
+    const frame = vi.fn()
+    vi.stubGlobal('document', { hidden: true })
+    vi.stubGlobal('requestAnimationFrame', frame)
+    try {
+      const flush = vi.fn()
+      nextFrame(flush)
+      vi.advanceTimersByTime(249)
+      expect(flush).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(1)
+      expect(flush).toHaveBeenCalledOnce()
+      expect(frame).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+      vi.useRealTimers()
+    }
   })
 })

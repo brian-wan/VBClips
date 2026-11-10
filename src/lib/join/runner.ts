@@ -17,18 +17,27 @@ import { FALLBACK_LABEL, JoinProgress, loadRates, saveRates, type Rates } from '
 /** Runs `flush` later and returns a function that cancels it. */
 export type Scheduler = (flush: () => void) => () => void
 
-/** One flush per animation frame in a page; a 16 ms timer elsewhere. */
+/** How often events are delivered while the tab is hidden, where animation frames do not run. */
+const HIDDEN_FLUSH_MS = 250
+
+/**
+ * One flush per animation frame in a visible page; a 250 ms timer in a hidden tab, so a join in
+ * the background still shows where it got to when the tab returns; a 16 ms timer elsewhere.
+ */
 export const nextFrame: Scheduler = (flush) => {
-  if (typeof document !== 'undefined' && typeof requestAnimationFrame === 'function') {
+  const page = typeof document !== 'undefined'
+  if (page && !document.hidden && typeof requestAnimationFrame === 'function') {
     const id = requestAnimationFrame(flush)
     return () => cancelAnimationFrame(id)
   }
-  const id = setTimeout(flush, 16)
+  const id = setTimeout(flush, page ? HIDDEN_FLUSH_MS : 16)
   return () => clearTimeout(id)
 }
 
 /** How often the estimate is refreshed while the core starts and reports nothing. */
 const START_TICK_MS = 250
+/** Silence from ffmpeg this long while it cuts, combines or saves means the worker is gone. */
+const STALL_MS = 120_000
 
 export type LogListener = (event: { type: string; message: string }) => void
 export type ProgressListener = (event: { progress: number; time: number }) => void
@@ -96,6 +105,9 @@ export type JoinOptions = {
 
 export const OUTPUT = 'out.mp4'
 const LOG_LIMIT = 200
+
+export const STALLED_MESSAGE =
+  'ffmpeg stopped responding, usually because the browser ran out of memory. Try fewer clips or Precise mode.'
 
 export const FALLBACK_REASON =
   'Fast join could not combine the segments, usually because their codec settings differ. Re-encoding with Precise instead.'
@@ -201,13 +213,33 @@ export async function runJoin({
     }, START_TICK_MS)
   }
 
+  // Armed from the first cut until the output is read: any log line or progress event resets it.
+  let watchdog: ReturnType<typeof setTimeout> | undefined
+  let stalled = false
+  const disarm = () => {
+    clearTimeout(watchdog)
+    watchdog = undefined
+  }
+  const arm = () => {
+    disarm()
+    watchdog = setTimeout(() => {
+      stalled = true
+      ffmpeg.terminate()
+    }, STALL_MS)
+  }
+  const heardFromFFmpeg = () => {
+    if (watchdog !== undefined) arm()
+  }
+
   const onLog: LogListener = ({ message }) => {
+    heardFromFFmpeg()
     log.push(message)
     if (log.length > LOG_LIMIT) log.shift()
     onEvent?.({ ...current, log: message })
   }
   const outputSeconds = totalDuration(segments)
   const onProgress: ProgressListener = ({ time }) => {
+    heardFromFFmpeg()
     if (current.phase === 'cut') {
       const index = current.segmentIndex
       model.cut(index, segmentRatio(time, segments[index]), now())
@@ -272,6 +304,7 @@ export async function runJoin({
       mounted.push(mountPoint(i))
     }
 
+    arm()
     if (!(await render(mode))) {
       model.fallback(now())
       emitNow({
@@ -287,6 +320,7 @@ export async function runJoin({
     model.save(now())
     emit({ phase: 'save' })
     const data = await ffmpeg.readFile(OUTPUT)
+    disarm()
     await removeAll([OUTPUT])
     const blob = new Blob([data as Uint8Array<ArrayBuffer>], { type: 'video/mp4' })
     model.finish(outputName, now())
@@ -294,15 +328,17 @@ export async function runJoin({
     return blob
   } catch (error) {
     if (signal?.aborted) throw new JoinCancelled()
+    if (stalled) throw fail(STALLED_MESSAGE, current.mode)
     if (error instanceof JoinError) throw error
     throw fail(error instanceof Error ? error.message : String(error), current.mode)
   } finally {
+    disarm()
     stopTicking()
     cancelPending()
     signal?.removeEventListener('abort', onAbort)
     ffmpeg.off('log', onLog)
     ffmpeg.off('progress', onProgress)
-    if (!signal?.aborted) {
+    if (!signal?.aborted && !stalled) {
       for (const point of mounted) await ffmpeg.unmount(point).catch(() => undefined)
     }
   }

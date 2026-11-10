@@ -4,6 +4,8 @@ import { roundThumbTime, thumbKey } from '../lib/filmstrip'
 /** Frame height in device pixels; tiles are at most 56 CSS px tall, drawn at 2x. */
 const FRAME_HEIGHT = 112
 const SEEK_TIMEOUT_MS = 4000
+/** A hidden video that has not read its metadata by now never will. */
+const READY_TIMEOUT_MS = 15_000
 const JPEG_QUALITY = 0.7
 
 /**
@@ -46,8 +48,11 @@ class Extractor {
   private priorityQueue: number[] = []
   private readonly retried = new Set<number>()
   private readonly ready: Promise<boolean>
+  private settleReady: (ok: boolean) => void = () => undefined
   private running = false
   private disposed = false
+  /** The video failed after loading, e.g. the file became unreadable: every frame is a miss. */
+  private broken = false
   private readonly sourceId: string
   private readonly onFrame: (key: string, frame: string) => void
   private readonly onMiss: (key: string) => void
@@ -68,8 +73,18 @@ class Extractor {
     this.video.muted = true
     this.video.preload = 'metadata'
     this.ready = new Promise((resolve) => {
-      this.video.addEventListener('loadedmetadata', () => resolve(true), { once: true })
-      this.video.addEventListener('error', () => resolve(false), { once: true })
+      const timer = window.setTimeout(() => resolve(false), READY_TIMEOUT_MS)
+      this.settleReady = (ok) => {
+        window.clearTimeout(timer)
+        resolve(ok)
+      }
+    })
+    this.video.addEventListener('loadedmetadata', () => this.settleReady(true), { once: true })
+    this.video.addEventListener('error', () => {
+      this.settleReady(false)
+      if (this.disposed) return
+      this.broken = true
+      this.drain()
     })
     this.video.src = url
     hiddenHost().append(this.video)
@@ -85,6 +100,7 @@ class Extractor {
 
   dispose() {
     this.disposed = true
+    this.settleReady(false)
     this.queue = []
     this.priorityQueue = []
     this.video.removeAttribute('src')
@@ -92,25 +108,34 @@ class Extractor {
     this.video.remove()
   }
 
+  /** Gives up on every queued frame. */
+  private drain() {
+    const lost = [...this.priorityQueue, ...this.queue]
+    this.priorityQueue = []
+    this.queue = []
+    for (const t of lost) this.onMiss(thumbKey(this.sourceId, t))
+  }
+
   private async run() {
     if (this.running) return
     this.running = true
     try {
-      if (!(await this.ready)) {
-        for (const t of [...this.priorityQueue, ...this.queue]) {
-          this.onMiss(thumbKey(this.sourceId, t))
-        }
-        this.priorityQueue = []
-        this.queue = []
+      if (!(await this.ready) || this.broken) {
+        if (!this.disposed) this.drain()
         return
       }
-      while (!this.disposed) {
+      while (!this.disposed && !this.broken) {
         const t = this.priorityQueue.shift() ?? this.queue.shift()
         if (t === undefined) break
         const key = thumbKey(this.sourceId, t)
         if (this.has(key)) continue
         const frame = await this.capture(t)
         if (this.disposed) break
+        if (this.broken) {
+          this.onMiss(key)
+          this.drain()
+          break
+        }
         if (frame) this.onFrame(key, frame)
         else if (!this.retried.has(t)) {
           this.retried.add(t)

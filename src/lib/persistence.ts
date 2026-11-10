@@ -135,12 +135,13 @@ export function loadSession(store: KeyValueStore): SavedSession | null {
   )
 }
 
+/** Writes the new key before removing the others, so a failed write loses no session. */
 export function saveSession(store: KeyValueStore, session: SavedSession): void {
   const key = sessionKey(session)
+  store.setItem(key, JSON.stringify(session))
   for (const other of sessionKeys(store)) {
     if (other !== key) store.removeItem(other)
   }
-  store.setItem(key, JSON.stringify(session))
 }
 
 export function clearSessions(store: KeyValueStore): void {

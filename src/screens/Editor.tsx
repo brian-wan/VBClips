@@ -39,6 +39,8 @@ import { TransportBar } from './editor/TransportBar'
 type Props = EditorInput & {
   onExit: () => void
   onError: (message: string) => void
+  /** Hands the app this editor's save, so the browser's Back can save before leaving. */
+  registerSave: (save: (() => void) | null) => void
 }
 
 type Flash = { id: number; playing: boolean }
@@ -52,6 +54,7 @@ export function Editor({
   playhead: initialPlayhead,
   onExit,
   onError,
+  registerSave,
 }: Props) {
   const [state, dispatch] = useReducer(sessionReducer, initialSession, (s) =>
     sessionReducer(s, {
@@ -123,6 +126,10 @@ export function Editor({
   }, [player.currentTime, player.duration])
   const getPlayhead = useCallback(() => lastPlayhead.current, [])
   const saveNow = useSessionPersistence(state, getPlayhead)
+  useEffect(() => {
+    registerSave(saveNow)
+    return () => registerSave(null)
+  }, [registerSave, saveNow])
 
   useEffect(() => {
     const video = videoRef.current

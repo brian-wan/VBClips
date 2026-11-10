@@ -93,6 +93,17 @@ describe('persistence', () => {
     expect(loadSession(store)?.sources[0].name).toBe('court2.mov')
   })
 
+  it('keeps the old session when writing the new one fails', () => {
+    saveSession(store, buildSavedSession([source], clips, 0, 1))
+    const full = Object.assign(store, {
+      setItem: () => {
+        throw new Error('QuotaExceededError')
+      },
+    })
+    expect(() => saveSession(full, buildSavedSession([second], [], 0, 2))).toThrow()
+    expect(loadSession(store)?.sources[0].name).toBe('match.mp4')
+  })
+
   it('clears saved sessions but leaves other keys', () => {
     store.setItem('unrelated', 'x')
     saveSession(store, buildSavedSession([source], clips, 0, 1))

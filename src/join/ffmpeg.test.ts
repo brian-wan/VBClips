@@ -4,6 +4,7 @@ import {
   BrowserFFmpeg,
   CoreDownloader,
   SINGLE_THREAD_FALLBACK_LOG,
+  readChunks,
   type CoreChoice,
   type CoreConfig,
   type FFmpegCore,
@@ -11,22 +12,27 @@ import {
 
 type Listener = (event: { type: string; message: string }) => void
 
+/** Which core loads never answer: none, the multi-thread one, or every one. */
+type Hang = boolean | 'all'
+
 class FakeCore {
   loaded = false
   terminated = false
   loads: CoreConfig[] = []
+  loadSignals: (AbortSignal | undefined)[] = []
   private listeners: Listener[] = []
   private rejectLoad: ((reason: Error) => void) | null = null
 
-  private readonly hangOnMultiThread: boolean
+  private readonly hang: Hang
 
-  constructor(hangOnMultiThread: boolean) {
-    this.hangOnMultiThread = hangOnMultiThread
+  constructor(hang: Hang) {
+    this.hang = hang
   }
 
-  load = (config: CoreConfig) => {
+  load = (config: CoreConfig, options: { signal?: AbortSignal } = {}) => {
     this.loads.push(config)
-    if (config.workerURL && this.hangOnMultiThread) {
+    this.loadSignals.push(options.signal)
+    if (this.hang === 'all' || (config.workerURL && this.hang)) {
       return new Promise<boolean>((_, reject) => {
         this.rejectLoad = reject
       })
@@ -150,6 +156,31 @@ describe('CoreDownloader', () => {
     )
   })
 
+  it('fails when a read brings nothing for 30 s', async () => {
+    vi.useFakeTimers()
+    try {
+      let cancelled = false
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(10))
+        },
+        cancel() {
+          cancelled = true
+        },
+      })
+      const chunks: number[] = []
+      const reading = readChunks(new Response(body), (bytes) => chunks.push(bytes))
+      const outcome = expect(reading).rejects.toThrow('The download stalled')
+      await vi.advanceTimersByTimeAsync(29_999)
+      expect(chunks).toEqual([10])
+      await vi.advanceTimersByTimeAsync(1)
+      await outcome
+      expect(cancelled).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('fails on an HTTP error', async () => {
     const downloader = new CoreDownloader({
       fetch: async () => new Response('missing', { status: 404 }),
@@ -159,7 +190,7 @@ describe('CoreDownloader', () => {
 })
 
 function setup(
-  hangOnMultiThread: boolean,
+  hang: Hang,
   choice: CoreChoice = { singleThreadOnly: false },
   download?: (
     config: CoreConfig,
@@ -170,7 +201,7 @@ function setup(
   const cores: FakeCore[] = []
   const adapter = new BrowserFFmpeg({
     createFFmpeg: () => {
-      const core = new FakeCore(hangOnMultiThread)
+      const core = new FakeCore(hang)
       cores.push(core)
       return core as unknown as FFmpegCore
     },
@@ -264,6 +295,43 @@ describe('BrowserFFmpeg.load', () => {
     const controller = new AbortController()
     await adapter.load(undefined, controller.signal)
     expect(signals).toEqual([controller.signal])
+  })
+
+  it('fails when the single-thread core does not start in 30 s', async () => {
+    const { adapter, cores } = setup('all', { singleThreadOnly: true })
+    const loading = adapter.load()
+    const outcome = expect(loading).rejects.toThrow('ffmpeg did not start')
+    await vi.advanceTimersByTimeAsync(29_999)
+    expect(cores[0].terminated).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await outcome
+    expect(cores[0].terminated).toBe(true)
+  })
+
+  it('gives the single-thread core its own 30 s after a multi-thread timeout', async () => {
+    const { adapter, cores, logs } = setup('all')
+    const loading = adapter.load()
+    const outcome = expect(loading).rejects.toThrow('ffmpeg did not start')
+    await vi.advanceTimersByTimeAsync(8000)
+    expect(logs).toEqual([SINGLE_THREAD_FALLBACK_LOG])
+    await vi.advanceTimersByTimeAsync(30_000)
+    await outcome
+    expect(cores.map((c) => c.terminated)).toEqual([true, true])
+  })
+
+  it('hands the signal to the core load and checks it just before', async () => {
+    const controller = new AbortController()
+    const { adapter, cores } = setup(false, undefined, async (urls) => {
+      controller.abort()
+      return urls
+    })
+    await expect(adapter.load(undefined, controller.signal)).rejects.toThrow(/abort/i)
+    expect(cores[0].loads).toEqual([])
+
+    const other = setup(false)
+    const live = new AbortController()
+    await other.adapter.load(undefined, live.signal)
+    expect(other.cores[0].loadSignals).toEqual([live.signal])
   })
 
   it('counts the single-thread files on top of the multi-thread ones after a timeout', async () => {

@@ -24,8 +24,10 @@ type Props = {
 
 type PickMode = 'new' | 'continue'
 
-/** Probes every file; reports the first one the browser cannot play. */
-async function loadAll(files: File[], onEach: () => void): Promise<LoadedSource[] | string> {
+type Loaded = { sources: LoadedSource[] } | { error: string; failedIds: string[] }
+
+/** Probes every file; on failure, names the first one the browser cannot play and lists all. */
+async function loadAll(files: File[], onEach: () => void): Promise<Loaded> {
   const loaded = await Promise.all(
     files.map(async (file) => {
       const source = await loadSource(file)
@@ -33,9 +35,11 @@ async function loadAll(files: File[], onEach: () => void): Promise<LoadedSource[
       return source
     }),
   )
-  const failed = loaded.findIndex((source) => source === null)
-  if (failed >= 0) return unplayableMessage(files[failed].name)
-  return loaded as LoadedSource[]
+  const sources = loaded.filter((source) => source !== null)
+  const failed = files.filter((_, i) => loaded[i] === null)
+  const first = failed[0]
+  if (!first) return { sources }
+  return { error: unplayableMessage(first.name), failedIds: failed.map(fingerprint) }
 }
 
 /** The saved playhead moved to where its source sits once missing sources are dropped. */
@@ -106,8 +110,8 @@ export function Home({ onOpen, error, onError }: Props) {
   const openNew = async (file: File) => {
     const loaded = await probe([file], 'new')
     if (loaded === null) return
-    if (typeof loaded === 'string') onError(loaded)
-    else onOpen({ sources: loaded, clips: [], playhead: 0 })
+    if ('error' in loaded) onError(loaded.error)
+    else onOpen({ sources: loaded.sources, clips: [], playhead: 0 })
   }
 
   /** Opens the saved session with the sources that have a file; the others and their clips go. */
@@ -118,15 +122,18 @@ export function Home({ onOpen, error, onError }: Props) {
     })
     const loaded = await probe(picked, 'continue')
     if (loaded === null) return
-    if (typeof loaded === 'string') {
-      onError(loaded)
+    if ('error' in loaded) {
+      // The files that failed are needed again, so the user can pick others or open without them.
+      const failed = new Set(loaded.failedIds)
+      setFound(new Map([...files].filter(([id]) => !failed.has(id))))
+      onError(loaded.error)
       return
     }
-    const ids = new Set(loaded.map((s) => s.meta.id))
+    const ids = new Set(loaded.sources.map((s) => s.meta.id))
     onOpen({
-      sources: loaded,
+      sources: loaded.sources,
       clips: session.clips.filter((c) => ids.has(c.sourceId)),
-      playhead: keptPlayhead(session, loaded),
+      playhead: keptPlayhead(session, loaded.sources),
     })
   }
 
@@ -134,13 +141,14 @@ export function Home({ onOpen, error, onError }: Props) {
   const openWithReplacement = async (session: SavedSession, file: File) => {
     const loaded = await probe([file], 'continue')
     if (loaded === null) return
-    if (typeof loaded === 'string') {
-      onError(loaded)
+    const replacement = 'error' in loaded ? undefined : loaded.sources[0]
+    if (!replacement) {
+      onError('error' in loaded ? loaded.error : unplayableMessage(file.name))
       return
     }
-    const id = loaded[0].meta.id
+    const id = replacement.meta.id
     onOpen({
-      sources: loaded,
+      sources: [replacement],
       clips: session.clips.map((c) => ({ ...c, sourceId: id })),
       playhead: session.playhead,
     })

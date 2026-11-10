@@ -13,6 +13,10 @@ import type {
 } from '../lib/join/runner'
 
 export const MULTI_THREAD_TIMEOUT_MS = 8000
+/** The single-thread core normally starts in well under a second. */
+const SINGLE_THREAD_TIMEOUT_MS = 30_000
+/** One read of the core download that brings nothing for this long fails the join. */
+const DOWNLOAD_STALL_MS = 30_000
 export const SINGLE_THREAD_FALLBACK_LOG =
   'Multi-thread core did not start; using the single-thread core'
 
@@ -47,11 +51,26 @@ export function contentLength(response: Response): number | null {
   return Number.isFinite(length) && length > 0 ? length : null
 }
 
-/** Reads a response body chunk by chunk, reporting each chunk's size. */
+const TIMED_OUT = Symbol('timed out')
+
+/** Settles like `promise`, or with TIMED_OUT once `ms` pass first. */
+async function within<T>(promise: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
+/**
+ * Reads a response body chunk by chunk, reporting each chunk's size. A read that brings nothing
+ * for `stallMs` fails with "The download stalled".
+ */
 export async function readChunks(
   response: Response,
   onChunk: (bytes: number) => void,
   signal?: AbortSignal,
+  stallMs = DOWNLOAD_STALL_MS,
 ): Promise<Uint8Array<ArrayBuffer>[]> {
   if (!response.body) {
     const whole = new Uint8Array(await response.arrayBuffer())
@@ -65,7 +84,14 @@ export async function readChunks(
       await reader.cancel().catch(() => undefined)
       signal.throwIfAborted()
     }
-    const { done, value } = await reader.read()
+    const reading = reader.read()
+    const outcome = await within(reading, stallMs)
+    if (outcome === TIMED_OUT) {
+      reading.catch(() => undefined)
+      await reader.cancel().catch(() => undefined)
+      throw new Error('The download stalled')
+    }
+    const { done, value } = outcome
     if (done) return chunks
     chunks.push(value as Uint8Array<ArrayBuffer>)
     onChunk(value.byteLength)
@@ -176,6 +202,8 @@ export type BrowserFFmpegOptions = {
   multiThread?: () => boolean
   coreConfig?: (multiThread: boolean) => CoreConfig
   timeoutMs?: number
+  /** How long the single-thread core may take to start before the join fails. */
+  singleThreadTimeoutMs?: number
   choice?: CoreChoice
   /** Turns the core's asset URLs into blob URLs, reporting download progress. */
   download?: (
@@ -184,8 +212,6 @@ export type BrowserFFmpegOptions = {
     signal?: AbortSignal,
   ) => Promise<CoreConfig>
 }
-
-const TIMED_OUT = Symbol('timed out')
 
 /**
  * Wraps `@ffmpeg/ffmpeg`, serving the core from the app's own assets. Listeners live here rather
@@ -196,6 +222,7 @@ export class BrowserFFmpeg implements FFmpegLike {
   private readonly multiThread: () => boolean
   private readonly coreConfig: (multiThread: boolean) => CoreConfig
   private readonly timeoutMs: number
+  private readonly singleThreadTimeoutMs: number
   private readonly choice: CoreChoice
   private readonly downloadCore: (
     config: CoreConfig,
@@ -211,6 +238,7 @@ export class BrowserFFmpeg implements FFmpegLike {
     this.multiThread = options.multiThread ?? usesMultiThreadCore
     this.coreConfig = options.coreConfig ?? browserCoreConfig
     this.timeoutMs = options.timeoutMs ?? MULTI_THREAD_TIMEOUT_MS
+    this.singleThreadTimeoutMs = options.singleThreadTimeoutMs ?? SINGLE_THREAD_TIMEOUT_MS
     this.choice = options.choice ?? pageCoreChoice
     this.downloadCore =
       options.download ??
@@ -230,8 +258,18 @@ export class BrowserFFmpeg implements FFmpegLike {
   }
 
   /**
+   * Starts the core from `config`. Checks `signal` first and hands it to the library, so a Stop
+   * between the last downloaded byte and the core answering rejects the load.
+   */
+  private startCore(config: CoreConfig, signal: AbortSignal | undefined) {
+    signal?.throwIfAborted()
+    return this.ffmpeg.load(config, signal ? { signal } : {})
+  }
+
+  /**
    * Downloads the core (once per page) and starts it. The 8 s limit applies to starting the
-   * multi-thread core, not to the download before it, which is bound by the network.
+   * multi-thread core, not to the download before it, which is bound by the network. The
+   * single-thread core gets 30 s to start; after that the load fails with "ffmpeg did not start".
    */
   async load(onProgress?: DownloadListener, signal?: AbortSignal) {
     if (this.ffmpeg.loaded) return
@@ -251,27 +289,28 @@ export class BrowserFFmpeg implements FFmpegLike {
         signal,
       )
     }
+    const startSingleThread = async () => {
+      const loading = this.startCore(await fetchCore(false), signal)
+      if ((await within(loading, this.singleThreadTimeoutMs)) !== TIMED_OUT) return
+      loading.catch(() => undefined)
+      this.ffmpeg.terminate()
+      throw new Error('ffmpeg did not start')
+    }
 
     if (this.choice.singleThreadOnly || !this.multiThread()) {
-      await this.ffmpeg.load(await fetchCore(false))
+      await startSingleThread()
       return
     }
 
-    const config = await fetchCore(true)
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
-      timer = setTimeout(() => resolve(TIMED_OUT), this.timeoutMs)
-    })
-    const loading = this.ffmpeg.load(config)
-    const outcome = await Promise.race([loading, timeout]).finally(() => clearTimeout(timer))
-    if (outcome !== TIMED_OUT) return
+    const loading = this.startCore(await fetchCore(true), signal)
+    if ((await within(loading, this.timeoutMs)) !== TIMED_OUT) return
 
     loading.catch(() => undefined)
     this.ffmpeg.terminate()
     this.choice.singleThreadOnly = true
     this.ffmpeg = this.freshFFmpeg()
     this.emitLog(SINGLE_THREAD_FALLBACK_LOG)
-    await this.ffmpeg.load(await fetchCore(false))
+    await startSingleThread()
   }
 
   async mount(file: File, mountPoint: string) {

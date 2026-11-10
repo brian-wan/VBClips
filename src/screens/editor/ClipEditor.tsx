@@ -15,6 +15,7 @@ import type { SourceMeta } from '../../lib/session'
 import { formatTimePrecise } from '../../lib/time'
 import { handleAt, shouldRecenter, timeAtX, trimWindow, xOfTime } from '../../lib/trimmer'
 import { ProgressLine } from '../../components/ProgressLine'
+import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { thumbnails, useThumbnails } from '../../media/thumbnails'
 import styles from './ClipEditor.module.css'
 
@@ -34,7 +35,7 @@ type Props = {
   onDelete: (clip: Clip) => void
 }
 
-type Drag = { edge: TrimEdge; original: Clip; draft: Clip; offset: number; pointerId: number }
+type Drag = { edge: TrimEdge; original: Clip; draft: Clip; offset: number }
 
 type View = { start: number; end: number; window: Span }
 
@@ -89,34 +90,6 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
     })
   }
 
-  const stripRef = useRef<HTMLDivElement>(null)
-  const dragRef = useRef(drag)
-  const handlers = useRef({ onSeek, onDragEnd })
-  useEffect(() => {
-    dragRef.current = drag
-    handlers.current = { onSeek, onDragEnd }
-  })
-
-  // Escape during a drag puts the clip back as it was.
-  const dragging = drag !== null
-  useEffect(() => {
-    if (!dragging) return
-    const onKey = (e: KeyboardEvent) => {
-      const current = dragRef.current
-      if (e.key !== 'Escape' || !current) return
-      e.preventDefault()
-      e.stopImmediatePropagation()
-      const strip = stripRef.current
-      if (strip?.hasPointerCapture(current.pointerId))
-        strip.releasePointerCapture(current.pointerId)
-      setDrag(null)
-      handlers.current.onSeek(edgeTime(current.original, current.edge))
-      handlers.current.onDragEnd()
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [dragging])
-
   const { window: span } = view
   const shown = drag?.draft ?? clip
   const times = tileTimes(span.start, span.end, tileCount(width, TRIM_TILE_PX))
@@ -126,6 +99,29 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
   const localX = (e: PointerEvent<HTMLDivElement>) =>
     e.clientX - (trackRef.current?.getBoundingClientRect().left ?? 0)
 
+  const trimDrag = usePointerDrag<HTMLDivElement>({
+    onMove: (e) => {
+      if (!drag) return
+      const t = timeAtX(localX(e) - drag.offset, width, span)
+      const draft = trimClip(drag.original, drag.edge, t, source.duration)
+      setDrag({ ...drag, draft })
+      onSeek(edgeTime(draft, drag.edge))
+    },
+    onCommit: () => {
+      if (!drag) return
+      setDrag(null)
+      onChange(drag.draft)
+      onDragEnd()
+    },
+    // Escape, or anything else that ends the drag early, puts the clip back as it was.
+    onCancel: () => {
+      if (!drag) return
+      setDrag(null)
+      onSeek(edgeTime(drag.original, drag.edge))
+      onDragEnd()
+    },
+  })
+
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 || width <= 0) return
     const x = localX(e)
@@ -134,29 +130,11 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
       onSeek(timeAtX(x, width, span))
       return
     }
-    e.currentTarget.setPointerCapture(e.pointerId)
+    trimDrag.begin(e)
     const offset = x - xOfTime(edgeTime(clip, edge), width, span)
-    setDrag({ edge, original: clip, draft: clip, offset, pointerId: e.pointerId })
+    setDrag({ edge, original: clip, draft: clip, offset })
     onDragStart()
     onSeek(edgeTime(clip, edge))
-  }
-
-  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!drag || drag.pointerId !== e.pointerId) return
-    const t = timeAtX(localX(e) - drag.offset, width, span)
-    const draft = trimClip(drag.original, drag.edge, t, source.duration)
-    setDrag({ ...drag, draft })
-    onSeek(edgeTime(draft, drag.edge))
-  }
-
-  const endDrag = (e: PointerEvent<HTMLDivElement>, cancelled: boolean) => {
-    if (!drag || drag.pointerId !== e.pointerId) return
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId)
-    }
-    setDrag(null)
-    if (!cancelled) onChange(drag.draft)
-    onDragEnd()
   }
 
   const handleCursor = drag ? 'ew-resize' : undefined
@@ -171,13 +149,10 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
 
       <div className={styles.trim}>
         <div
-          ref={stripRef}
           className={styles.strip}
           style={{ cursor: handleCursor }}
+          {...trimDrag.props}
           onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={(e) => endDrag(e, false)}
-          onPointerCancel={(e) => endDrag(e, true)}
           role="group"
           aria-label={`Trim clip ${number}`}
         >
