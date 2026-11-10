@@ -57,7 +57,6 @@
 }
 
 .navArrow {
-  composes: touchTarget from '../../components/ui.module.css';
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -75,7 +74,6 @@
 }
 
 .navLabel {
-  composes: touchTarget from '../../components/ui.module.css';
   min-width: 72px;
   padding: 0 8px;
   border-left: 1px solid var(--color-separator);
@@ -112,7 +110,6 @@
 }
 
 .mark {
-  composes: touchTarget from '../../components/ui.module.css';
   display: flex;
   align-items: center;
   justify-content: center;
@@ -171,7 +168,6 @@
 }
 
 .segment {
-  composes: touchTarget from '../../components/ui.module.css';
   min-width: 40px;
   padding: 0 8px;
   border-radius: 2px;

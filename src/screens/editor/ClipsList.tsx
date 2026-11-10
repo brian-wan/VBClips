@@ -3,6 +3,7 @@ import { Trash } from '../../components/Icons'
 import { clipDuration, type Clip } from '../../lib/clips'
 import { useCoarsePointer } from '../../hooks/useCoarsePointer'
 import { formatTime, formatTimePrecise } from '../../lib/time'
+import ui from '../../components/ui.module.css'
 import styles from './ClipsList.module.css'
 
 type Props = {
@@ -97,7 +98,7 @@ export const ClipsList = memo(function ClipsList({
               </button>
               <button
                 type="button"
-                className={styles.trash}
+                className={`${ui.touchTarget} ${styles.trash}`}
                 aria-label={`Delete clip ${i + 1}`}
                 title={`Delete clip ${i + 1} (Delete)`}
                 onClick={() => onDelete(clip)}

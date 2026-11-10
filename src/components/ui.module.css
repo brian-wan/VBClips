@@ -1,3 +1,23 @@
+/*
+ * Touch: every control takes at least a 44×44 hit area. A transparent ::before grows the target
+ * around the smaller visual; `min(0px, …)` leaves a side that is already 44px or more alone.
+ * Controls outside this file add `ui.touchTarget`; the bare rule declares it for `composes`.
+ */
+.touchTarget {
+}
+
+@media (pointer: coarse) {
+  .touchTarget {
+    position: relative;
+  }
+
+  .touchTarget::before {
+    content: '';
+    position: absolute;
+    inset: min(0px, calc(50% - 22px));
+  }
+}
+
 .button {
   composes: touchTarget;
   display: inline-flex;
@@ -232,23 +252,6 @@
   left: auto;
   right: 0;
   transform: none;
-}
-
-/*
- * Touch: every control takes at least a 44×44 hit area. A transparent ::before grows the target
- * around the smaller visual; `min(0px, …)` leaves a side that is already 44px or more alone.
- * Controls outside this file compose it.
- */
-@media (pointer: coarse) {
-  .touchTarget {
-    position: relative;
-  }
-
-  .touchTarget::before {
-    content: '';
-    position: absolute;
-    inset: min(0px, calc(50% - 22px));
-  }
 }
 
 .spin {

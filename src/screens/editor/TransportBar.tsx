@@ -105,7 +105,7 @@ export function TransportBar({
         <div className={styles.clipNav} role="group" aria-label="Clip navigation">
           <button
             type="button"
-            className={`${ui.tip} ${styles.navArrow}`}
+            className={`${ui.tip} ${ui.touchTarget} ${styles.navArrow}`}
             aria-label="Previous clip"
             disabled={!hasClips}
             onClick={onPrevClip}
@@ -115,7 +115,7 @@ export function TransportBar({
           </button>
           <button
             type="button"
-            className={`${ui.tip} ${styles.navLabel}`}
+            className={`${ui.tip} ${ui.touchTarget} ${styles.navLabel}`}
             disabled={!hasClips}
             onClick={onOpenClip}
           >
@@ -124,7 +124,7 @@ export function TransportBar({
           </button>
           <button
             type="button"
-            className={`${ui.tip} ${styles.navArrow}`}
+            className={`${ui.tip} ${ui.touchTarget} ${styles.navArrow}`}
             aria-label="Next clip"
             disabled={!hasClips}
             onClick={onNextClip}
@@ -138,7 +138,7 @@ export function TransportBar({
       <div className={styles.center}>
         <button
           type="button"
-          className={`${ui.tip} ${styles.mark} ${marking ? styles.marking : ''}`}
+          className={`${ui.tip} ${ui.touchTarget} ${styles.mark} ${marking ? styles.marking : ''}`}
           aria-label={marking ? 'Mark end' : 'Mark start'}
           onClick={onMark}
         >
@@ -173,7 +173,7 @@ export function TransportBar({
               role="radio"
               aria-checked={s === speed}
               tabIndex={s === speed ? 0 : -1}
-              className={`${ui.tip} ${styles.segment} ${s === speed ? styles.segmentActive : ''}`}
+              className={`${ui.tip} ${ui.touchTarget} ${styles.segment} ${s === speed ? styles.segmentActive : ''}`}
               onClick={() => onSpeed(s)}
             >
               {s}×

@@ -106,7 +106,6 @@
 }
 
 .trash {
-  composes: touchTarget from '../../components/ui.module.css';
   display: inline-flex;
   align-items: center;
   justify-content: center;
