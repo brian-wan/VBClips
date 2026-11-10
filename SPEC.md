@@ -104,7 +104,7 @@ Layout is a fixed-height grid filling the viewport (no page scroll):
   playback of that clip only. Rows have a small trash icon on hover (delete with Undo toast).
   Empty state: "No clips yet. Press Space to mark the start of a point."
 - Selected clip editor: pinned to the bottom of the sidebar, shown whenever a clip is selected,
-  with the same fields as before: Start and End rows each with −1 s / −0.1 s / +0.1 s / +1 s nudges
+  with the same fields as before: Start and End rows each with −1 s / −0.1 s / +0.1 s / +1 s nudges (phase 3 replaces these rows with a trim strip, see "Clip editor trimmer")
   and "Set to playhead", a Preview button, a red Delete button, and the clip length. Rules are
   unchanged: start ≥ 0, end ≤ duration, end − start ≥ 0.2 s; disabled nudges, never silent clamps.
 - Toasts appear bottom-center over the video column.
@@ -384,6 +384,34 @@ model", "Persistence format" or "Phase 2: Join" above, this section wins.
   picked file that is not already a source (by fingerprint) is appended in picked order; duplicates
   show a toast "Already in the timeline". Dropping video files anywhere on the editor does the same.
   An unplayable file shows the existing message and is not added.
+
+### Clip editor trimmer (replaces the nudge buttons)
+
+The pinned clip editor keeps its header ("Clip 6" in orange, "Length 0:02.0" right-aligned) and
+its Preview and Delete clip buttons. The Start and End rows with the −1 s / −0.1 s / +0.1 s / +1 s
+nudges and the "Set to playhead" links are removed. In their place sits a **trim strip**, like the
+trimmer in iOS Photos or CapCut, zoomed in on the clip:
+
+- A filmstrip 56px tall spanning the card width, showing a window of the clip's source around
+  the clip: `[start − pad, end + pad]` with `pad = max(2 s, clip length / 2)`, clamped to the
+  source's `[0, duration]`. Frames come from the same thumbnail cache as the timeline, one per
+  48px tile, at evenly spaced times inside the window (`#2C2C2E` placeholders until they arrive).
+- The window is computed when the selected clip changes and stays fixed while a handle is being
+  dragged, so the frames never move under the pointer. After a drop, if either edge is within 10%
+  of the window's edge, recompute the window from the new clip.
+- The strip outside the clip is dimmed with a 60% black overlay. The clip region has a 2px orange
+  frame (top and bottom edges) and an 8px orange handle at each edge with a short white grip line,
+  cursor `ew-resize`. A thin white playhead line shows when the playhead is inside the window.
+- Dragging a handle moves that edge in local time at the window's scale (a 6 s window over a
+  300px card moves about 20 ms per pixel, which is the fine adjustment). Validation is `trimClip`
+  (start ≥ 0, end ≤ duration, length ≥ 0.2 s). The main video seeks to the handle time during the
+  drag so the frame is visible; releasing dispatches one `updateClip` (one undo step). Escape
+  during a drag restores the clip.
+- Under the strip: the start time under the left handle and the end time under the right handle
+  in `m:ss.t`, live during a drag. Clicking the strip away from a handle seeks the main video to
+  that time. Dragging the body of the selection does nothing in this phase.
+- Pure helpers in `src/lib/trimmer.ts` (`trimWindow`, `timeAtX` for the window, `shouldRecenter`),
+  unit tested.
 
 ### Playback across sources
 
