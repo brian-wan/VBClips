@@ -23,7 +23,8 @@ decisions. If something here is impossible, say so in the report instead of impr
    undo, session persistence, keyboard shortcuts, JSON export of markers.
 2. Join: render the clips into one downloadable mp4 in the browser with ffmpeg.wasm.
    Details in "Phase 2: Join" below.
-3. Multiple source videos in one session, polish, mobile layout.
+3. Timeline: filmstrip preview, several source videos in one session, drag to reorder.
+   Details in "Phase 3: Timeline" below. Polish and mobile layout come after.
 
 ## Screens
 
@@ -327,3 +328,100 @@ modal.
   the page, continue the session by picking the same file, and see the same clips. No page scroll
   at either size.
 - `README.md` documents setup and the shortcut table.
+
+## Phase 3: Timeline
+
+Settled. The scrubber becomes a CapCut-style timeline: every loaded video sits in a row as a
+block with a filmstrip of preview frames, a plus tile at the right end adds more videos, and
+dragging a block reorders the videos. Where this section conflicts with "Screens", "Marking
+model", "Persistence format" or "Phase 2: Join" above, this section wins.
+
+### Model
+
+- A session holds an ordered list of **sources**. A source is one picked video:
+  `{ id, name, size, lastModified, duration }` with `id = fingerprint(name|size|lastModified)`.
+  At runtime each source also has its `File` and one object URL, created when the source is
+  added and revoked when it is removed or the editor unmounts. Never read a file into memory.
+- The **sequence** is the sources played back to back in list order. Sequence time `T` runs
+  from 0 to the sum of durations; `offsetOf(i)` is the sum of the durations before source `i`.
+  Pure helpers in `src/lib/sequence.ts`: `offsetOf`, `totalDuration`, `locate(T) -> { index,
+  localTime }`, `toSequence(index, localTime)`, `moveSource(sources, from, to)`. Unit tested.
+- A **clip** is `{ id, sourceId, start, end }` with start and end in that source's local time.
+  A clip never spans two sources. Clip order everywhere (list, prev/next, join) is source order,
+  then start time.
+- The reducer's history snapshots now hold `{ sources, clips }`, so undo and redo also revert
+  adding, removing and reordering sources. New actions: `addSource`, `removeSource` (also drops
+  its clips), `moveSource(from, to)`. Keep `HISTORY_LIMIT` at 50.
+
+### Timeline (replaces the scrubber)
+
+- Lives where the scrubber was, full width of the video column. Rows from top: block headers
+  (20px), filmstrip (48px), times (current sequence time left, total right). Fit to width: the
+  sequence always spans the full strip width minus the plus tile; no zoom in this phase.
+- Each source is a **block** whose width is its share of the total duration. Block header: file
+  name (ellipsized) and duration in secondary grey, a small × on hover that removes the source
+  (5 s Undo toast, same as deleting a clip). Blocks are separated by a 2px `#000` gap.
+- The header is the **drag handle** for reordering: cursor `grab`, pointer-capture drag, the block
+  follows the pointer as a translucent ghost, a 2px orange insertion line shows the drop slot
+  between blocks, drop dispatches `moveSource`. Escape cancels the drag. Below 3px of travel it is
+  a click and does nothing. The filmstrip keeps the existing scrubber interactions unchanged: click
+  to seek, drag the playhead, click a clip segment to select, drag the selected clip's handles to
+  trim (`src/lib/scrubber.ts` hit-test math stays, now evaluated inside the block under the pointer
+  with local time).
+- **Filmstrip**: a row of 16:9 frames (`object-fit: cover`) covering the block, one per
+  `tileWidth = 64px`, taken at evenly spaced local times. Frames come from a hidden `<video>` per
+  source (`preload="metadata"`, muted) seeking in order and drawing to a canvas; store them as
+  data URLs or `ImageBitmap`s in an in-memory cache keyed by `sourceId` and rounded time, never
+  in `localStorage`. Tiles show a `#2C2C2E` placeholder until their frame arrives, so a long
+  recording fills in progressively. Recompute the tile set when the strip width changes by more
+  than one tile (debounced 200 ms); cached frames are reused.
+- Clip segments draw over the filmstrip as orange bands at 45% opacity with 2px solid top and
+  bottom edges; the selected clip is 65% with white 8px trim handles as before; the live marking
+  band is the lighter orange. Overlap dot rule unchanged. White playhead with a 2px stem spans
+  the filmstrip and header rows.
+- **Plus tile**: a 48×48 tile at the right end of the strip row, raised surface with a plus icon
+  and the tooltip "Add video". Click opens the file picker (`accept="video/*"`, multiple). Each
+  picked file that is not already a source (by fingerprint) is appended in picked order; duplicates
+  show a toast "Already in the timeline". Dropping video files anywhere on the editor does the same.
+  An unplayable file shows the existing message and is not added.
+
+### Playback across sources
+
+- One `<video>` element. When the playhead reaches the end of a source and a next source exists,
+  swap `src` to the next source's object URL, seek 0 and keep playing (a brief black frame is
+  acceptable). After the last source, pause at the end. Seeks to a sequence time in another
+  source swap `src` and seek to the local time. Speed persists across the swap.
+- Arrow keys and the transport buttons seek 5 s in sequence time, crossing boundaries.
+- Marking: Space marks in the current source. Pressing Space to end a clip while a different
+  source is current shows the toast "A clip can't span two videos" and keeps the marker open;
+  Escape cancels it. A marker left open when playback auto-advances follows the same rule.
+- Top bar center: one source shows name and duration as before; several show "3 videos · 1:52:10".
+
+### Home and persistence
+
+- `SavedSession` becomes `version: 2` with `sources: SourceMeta[]` (ordered) and clips carrying
+  `sourceId`. Version 1 saves are read and upgraded in memory to one source. The storage key is the
+  fingerprint of the first source; saving still removes other keys.
+- Continue Session opens a multi-select picker. Picked files match sources by fingerprint. If any
+  source is still missing, the card lists them ("Still needed: court2.mov") with "Pick files" and
+  "Open without them", which drops the missing sources and their clips. The mismatch flow for a
+  single-source save ("Use it anyway" / "Pick another") stays.
+- Export JSON writes the version 2 shape.
+
+### Join
+
+- `Segment` gains `sourceIndex`. Each source is mounted at `/in<i>` with WORKERFS; segments are
+  rendered in sequence order and concatenated as before. Output name comes from the first source.
+  The Fast-to-Precise fallback already covers sources whose codec settings differ; say so in the
+  dialog's Fast description: "If videos differ, Join switches to Precise automatically."
+- Estimates sum over all segments; `mergeOverlaps` runs per source.
+
+### Verification
+
+- Unit tests for `sequence.ts`, the new reducer actions with undo/redo, `moveSource`, version 1
+  to 2 upgrade, join planning with two sources. Run the whole suite, lint, typecheck and build.
+- Browser: load two short test videos (make them with ffmpeg `testsrc`, different sizes so Fast
+  concat fails), confirm the filmstrip fills in, reorder by dragging the header, mark a clip in
+  each, cross a boundary during playback, reload and Continue Session with both files. Do not
+  run a Join in the browser pane: a finished join downloads a file and the download prompt
+  interrupts the user. Verify join planning through the unit tests instead.
