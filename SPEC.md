@@ -882,18 +882,26 @@ screen recording in `~/Downloads`) and on a generated 1080p file.
   streaming read in a worker (`file.stream()` → `FileSystemSyncAccessHandle.write`), then mounts
   the staged `File` (`handle.getFile()`) in WORKERFS. Measured: 25 MB in 41 ms, 243 MB in 297 ms
   (820 MB/s); slices of the staged file read in 0.2 ms.
-- Staged copies live under an OPFS directory `vbclipper-stage/`, named by source fingerprint, and
-  are reused by later joins in the same editor session. They are deleted when the editor exits
+- Staged copies live under an OPFS directory `vbclipper-stage/`, named by a 16-digit hash of the
+  source fingerprint plus the original extension (the raw fingerprint contains `|`, unusable in an
+  ffmpeg path), and are reused by later joins in the same editor session. They are deleted when the editor exits
   (Home button, Back, error boundary exit) and any leftovers are deleted on app start.
 - Before staging, check `navigator.storage.estimate()`: if `quota - usage` is under the total
   source size plus 10%, or OPFS or `createSyncAccessHandle` is unavailable (older Safari), skip
   staging and mount the original `File` as today, and add one line to the dialog summary:
-  "This browser cannot cache the video, so joining may be slow."
+  "This browser cannot cache the video, so joining may be slow." The quota rule counts only
+  copies still to be written, so a second join of a large file is never refused. A copy that fails
+  part way (disk full) falls back to the original `File` the same way.
 - Progress: a new `stage` phase ("Preparing video · 1.2 of 4.0 GB") before `cut`, work in bytes,
   rate learned like the others (default 500 MB/s, stored key `stage`). Cancel aborts the stream
   and removes the partial staged file.
 - Pure parts (`src/lib/join/stage.ts`: directory and file naming, quota rule, progress math) are
   unit tested; the worker code has a test with a fake stream and access handle.
+- Known limits, accepted: a second tab starting the app deletes the staged copies of an editor open
+  in another tab (a join running there would then fail its reads and the next join copies again);
+  joining while the filmstrip is still extracting frames can slow staging by a few seconds because
+  both read the same file. The staged rate is timed from the first chunk with no warm-up, so most
+  copies are too short to learn from and the default stays.
 
 ### Precise keeps the source timing
 
