@@ -1,10 +1,9 @@
-.card {
+.panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 16px;
-  border-radius: var(--radius-card);
-  background: var(--color-surface-raised);
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid var(--color-separator);
   animation: enter var(--motion);
 }
 
@@ -18,7 +17,7 @@
 .title {
   margin: 0;
   color: var(--color-accent);
-  font-size: var(--font-label);
+  font-size: var(--font-heading);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -148,8 +147,8 @@
   position: relative;
   height: 16px;
   color: var(--color-text);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-caption);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -178,24 +177,9 @@
 }
 
 .actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-/* Doubled selectors outrank the shared pill classes regardless of stylesheet order. */
-.actions .action {
-  height: 40px;
-  padding: 0 16px;
-  font-size: var(--font-caption);
-}
-
-.actions .preview {
-  background: var(--color-separator);
-}
-
-.actions .preview:hover:not(:disabled) {
-  background: #48484a;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 @keyframes enter {

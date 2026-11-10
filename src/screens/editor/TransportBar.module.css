@@ -3,14 +3,13 @@
  * leftover space equally, so the mark button sits in the exact center whenever it fits.
  */
 .bar {
-  --secondary-size: var(--size-icon-button);
-  --group-gap: 24px;
+  --group-gap: 16px;
 
   display: grid;
   grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
   align-items: center;
   column-gap: var(--group-gap);
-  min-height: 64px;
+  min-height: 48px;
 }
 
 .group {
@@ -22,37 +21,31 @@
 .cluster {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .end {
   justify-content: flex-end;
 }
 
-.play {
-  color: var(--color-text);
+/* Doubled selector outranks the shared icon button size regardless of stylesheet order. */
+.cluster .play {
+  width: 36px;
+  height: 36px;
 }
 
-.secondary {
-  width: var(--secondary-size);
-  height: var(--secondary-size);
-}
-
-/* Prev / label / next: three buttons that read as one control, like the speed segments. */
+/* Prev / label / next: three buttons that read as one control, split by 1px dividers. */
 .clipNav {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  height: var(--secondary-size);
-  padding: 0 4px;
-  border-radius: var(--radius-pill);
+  align-items: stretch;
+  height: var(--control-height);
+  border-radius: var(--radius-control);
   background: var(--color-surface);
 }
 
 .navArrow,
 .navLabel,
 .segment {
-  height: calc(var(--secondary-size) - 8px);
   border: none;
   background: none;
   color: var(--color-text);
@@ -67,18 +60,26 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: calc(var(--secondary-size) - 8px);
+  width: var(--control-height);
   padding: 0;
-  border-radius: 50%;
+}
+
+.navArrow:first-child {
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
+}
+
+.navArrow:last-child {
+  border-left: 1px solid var(--color-separator);
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
 }
 
 .navLabel {
   min-width: 72px;
   padding: 0 8px;
-  border-radius: var(--radius-pill);
+  border-left: 1px solid var(--color-separator);
   color: var(--color-accent);
-  font-size: var(--font-caption);
-  font-weight: 600;
+  font-size: var(--font-body);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -86,7 +87,7 @@
 .navArrow:hover:not(:disabled),
 .navLabel:hover:not(:disabled),
 .segment:hover:not(.segmentActive) {
-  background: var(--color-surface-raised);
+  background: var(--color-hover);
 }
 
 .navArrow:active:not(:disabled),
@@ -105,20 +106,20 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 .mark {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: none;
   border-radius: 50%;
   background: var(--color-mark);
-  box-shadow: 0 0 20px rgba(48, 209, 88, 0.4);
+  box-shadow: 0 0 14px rgba(48, 209, 88, 0.4);
   cursor: pointer;
   transition:
     background-color var(--motion),
@@ -129,7 +130,7 @@
 
 .mark:hover {
   filter: brightness(1.1);
-  box-shadow: 0 0 28px rgba(48, 209, 88, 0.6);
+  box-shadow: 0 0 20px rgba(48, 209, 88, 0.6);
 }
 
 .mark:active {
@@ -139,46 +140,39 @@
 .marking,
 .marking:hover {
   background: var(--color-accent);
-  box-shadow: 0 0 24px rgba(255, 159, 10, 0.5);
+  box-shadow: 0 0 16px rgba(255, 159, 10, 0.5);
 }
 
 .ring {
-  width: 40px;
-  height: 40px;
-  border: 3px solid rgba(255, 255, 255, 0.92);
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
   border-radius: 50%;
 }
 
 .stop {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
   background: var(--color-text);
-}
-
-.caption {
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  line-height: 16px;
-  letter-spacing: 0.02em;
 }
 
 .segmented {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  height: var(--secondary-size);
-  padding: 0 4px;
-  border-radius: var(--radius-pill);
+  align-items: stretch;
+  gap: 2px;
+  height: var(--control-height-small);
+  padding: 4px;
+  border-radius: var(--radius-control);
   background: var(--color-surface);
 }
 
 .segment {
-  min-width: 48px;
+  min-width: 40px;
   padding: 0 8px;
-  border-radius: var(--radius-pill);
+  border-radius: 2px;
   font-size: var(--font-caption);
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -189,28 +183,7 @@
 }
 
 .question {
-  font-size: var(--font-label);
+  font-size: var(--font-heading);
   font-weight: 600;
   line-height: 1;
-}
-
-/*
- * The spec's full-size controls need about 690 px; at a 1024 px viewport the video column is
- * 616 px. Below 1280 px the secondary controls drop to 36 px and the group gap to 16 px so the
- * bar keeps one row.
- */
-@media (max-width: 1279px) {
-  .bar {
-    --secondary-size: 36px;
-    --group-gap: 16px;
-  }
-
-  .segment {
-    min-width: 36px;
-    padding: 0 4px;
-  }
-
-  .navLabel {
-    min-width: 64px;
-  }
 }

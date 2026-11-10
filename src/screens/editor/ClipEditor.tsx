@@ -161,7 +161,7 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
   const playheadInside = playhead !== null && playhead >= span.start && playhead <= span.end
 
   return (
-    <section ref={ref} className={styles.card} tabIndex={-1} aria-label={`Edit clip ${number}`}>
+    <section ref={ref} className={styles.panel} tabIndex={-1} aria-label={`Edit clip ${number}`}>
       <header className={styles.header}>
         <h3 className={styles.title}>Clip {number}</h3>
         <span className={styles.length}>Length {formatTimePrecise(clipDuration(shown))}</span>
@@ -235,14 +235,14 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
       <div className={styles.actions}>
         <button
           type="button"
-          className={`${ui.pillSecondary} ${styles.action} ${styles.preview}`}
+          className={`${ui.secondary} ${ui.small}`}
           onClick={() => onPreview(clip)}
         >
           Preview
         </button>
         <button
           type="button"
-          className={`${ui.pillDestructive} ${styles.action}`}
+          className={`${ui.destructive} ${ui.small}`}
           onClick={() => onDelete(clip)}
         >
           Delete clip

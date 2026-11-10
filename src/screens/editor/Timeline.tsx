@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from 'react'
 import { Plus } from '../../components/Icons'
+import { Tip } from '../../components/Tip'
 import ui from '../../components/ui.module.css'
 import type { Clip } from '../../lib/clips'
 import { TIMELINE_TILE_PX, shouldRelayout, tileCount, tileTimes } from '../../lib/filmstrip'
@@ -513,10 +514,10 @@ export function Timeline({
           type="button"
           className={`${styles.plus} ${ui.tip} ${ui.tipEnd}`}
           aria-label="Add video"
-          data-tip="Add video"
           onClick={() => inputRef.current?.click()}
         >
           <Plus size={20} />
+          <Tip label="Add video" />
         </button>
         <input
           ref={inputRef}

@@ -3,12 +3,12 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 8px;
+  padding: 12px;
 }
 
 .title {
   margin: 0;
-  font-size: var(--font-label);
+  font-size: var(--font-heading);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -31,11 +31,11 @@
 /* One fixed column per element so every row lines up exactly. */
 .row {
   display: grid;
-  grid-template-columns: 64px 8px minmax(0, 1fr) auto 28px;
+  grid-template-columns: 52px 8px minmax(0, 1fr) auto 28px;
   align-items: center;
   column-gap: 8px;
-  height: 48px;
-  padding: 0 8px;
+  height: 36px;
+  padding: 0 8px 0 12px;
   border-bottom: 1px solid var(--color-separator);
   cursor: pointer;
   user-select: none;
@@ -43,19 +43,18 @@
 }
 
 .row:hover {
-  background: rgba(44, 44, 46, 0.6);
+  background: var(--color-surface-raised);
 }
 
 .row.selected {
   background: var(--color-surface-raised);
-  border-bottom-color: transparent;
-  border-radius: 8px;
+  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 .name {
   color: var(--color-accent);
-  font-size: var(--font-caption);
-  font-weight: 600;
+  font-size: var(--font-body);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -74,7 +73,7 @@
 .range {
   overflow: hidden;
   color: var(--color-text-secondary);
-  font-size: 13px;
+  font-size: var(--font-caption);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -94,7 +93,7 @@
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: none;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -122,8 +121,8 @@
 .empty {
   align-self: start;
   margin: 0;
-  padding: 24px 8px;
+  padding: 16px 12px;
   color: var(--color-text-secondary);
-  font-size: var(--font-caption);
+  font-size: var(--font-body);
   line-height: 1.4;
 }

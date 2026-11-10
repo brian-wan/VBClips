@@ -11,6 +11,7 @@ import type { EditorInput } from '../App'
 import { ChevronLeft, FastForward, ListIcon, PauseIcon, PlayIcon } from '../components/Icons'
 import { ShortcutsModal } from '../components/ShortcutsModal'
 import { Toasts } from '../components/Toasts'
+import { Tip } from '../components/Tip'
 import ui from '../components/ui.module.css'
 import { useEditorShortcuts } from '../hooks/useEditorShortcuts'
 import { useSessionPersistence } from '../hooks/useSessionPersistence'
@@ -330,15 +331,15 @@ export function Editor({
         <div className={styles.topStart}>
           <button
             type="button"
-            className={`${styles.homeButton} ${ui.tip} ${ui.tipBelow}`}
-            data-tip="Save and go home"
+            className={`${ui.secondary} ${styles.homeButton} ${ui.tip} ${ui.tipBelow}`}
             onClick={() => {
               saveNow()
               onExit()
             }}
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={16} />
             Home
+            <Tip label="Save and go home" />
           </button>
         </div>
         <div className={styles.fileInfo}>
@@ -357,13 +358,10 @@ export function Editor({
           )}
         </div>
         <div className={styles.topEnd}>
-          <span
-            className={`${ui.tip} ${ui.tipBelow} ${ui.tipEnd}`}
-            data-tip={clips.length === 0 ? 'Mark a clip first' : 'Join the clips into one video'}
-          >
+          <span className={`${ui.tip} ${ui.tipBelow} ${ui.tipEnd}`}>
             <button
               type="button"
-              className={`${ui.pill} ${styles.topPill}`}
+              className={ui.primary}
               disabled={clips.length === 0}
               onClick={(e) => {
                 e.currentTarget.blur()
@@ -373,16 +371,19 @@ export function Editor({
             >
               Join {clips.length} {clipWord} ({formatTime(totalClipped)})
             </button>
+            <Tip
+              label={clips.length === 0 ? 'Mark a clip first' : 'Join the clips into one video'}
+            />
           </span>
           <button
             type="button"
             className={`${ui.iconButton} ${styles.sidebarToggle} ${ui.tip} ${ui.tipBelow} ${ui.tipEnd}`}
             aria-label={sidebarOpen ? 'Hide clips' : 'Show clips'}
             aria-expanded={sidebarOpen}
-            data-tip={sidebarOpen ? 'Hide clips' : 'Show clips'}
             onClick={() => setSidebarOpen((open) => !open)}
           >
-            <ListIcon size={20} />
+            <ListIcon size={18} />
+            <Tip label={sidebarOpen ? 'Hide clips' : 'Show clips'} />
           </button>
         </div>
       </header>
@@ -408,7 +409,7 @@ export function Editor({
               />
               {speed > 1 && (
                 <div className={styles.speedBadge}>
-                  <FastForward size={14} />
+                  <FastForward size={12} />
                   {speed}× speed
                 </div>
               )}

@@ -6,6 +6,7 @@ import {
   PauseIcon,
   PlayIcon,
 } from '../../components/Icons'
+import { Tip } from '../../components/Tip'
 import ui from '../../components/ui.module.css'
 import { SPEEDS } from '../../lib/speed'
 import styles from './TransportBar.module.css'
@@ -51,28 +52,28 @@ export function TransportBar({
             type="button"
             className={`${iconTip} ${styles.play}`}
             aria-label={paused ? 'Play' : 'Pause'}
-            data-tip={paused ? 'Play (K)' : 'Pause (K)'}
             onClick={onTogglePlay}
           >
             {paused ? <PlayIcon size={20} /> : <PauseIcon size={20} />}
+            <Tip label={paused ? 'Play' : 'Pause'} keys={['K']} />
           </button>
           <button
             type="button"
-            className={`${iconTip} ${styles.secondary}`}
+            className={iconTip}
             aria-label="Back 5 seconds"
-            data-tip="Back 5 s (←)"
             onClick={() => onSeekBy(-5)}
           >
-            <Back5 size={24} strokeWidth={1.8} />
+            <Back5 size={20} strokeWidth={1.8} />
+            <Tip label="Back 5 s" keys={['←']} />
           </button>
           <button
             type="button"
-            className={`${iconTip} ${styles.secondary}`}
+            className={iconTip}
             aria-label="Forward 5 seconds"
-            data-tip="Forward 5 s (→)"
             onClick={() => onSeekBy(5)}
           >
-            <Forward5 size={24} strokeWidth={1.8} />
+            <Forward5 size={20} strokeWidth={1.8} />
+            <Tip label="Forward 5 s" keys={['→']} />
           </button>
         </div>
         <div className={styles.clipNav} role="group" aria-label="Clip navigation">
@@ -80,30 +81,30 @@ export function TransportBar({
             type="button"
             className={`${ui.tip} ${styles.navArrow}`}
             aria-label="Previous clip"
-            data-tip="Previous clip (↑ or [)"
             disabled={!hasClips}
             onClick={onPrevClip}
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={16} />
+            <Tip label="Previous clip" keys={['↑', '[']} />
           </button>
           <button
             type="button"
             className={`${ui.tip} ${styles.navLabel}`}
-            data-tip="Edit this clip (E)"
             disabled={!hasClips}
             onClick={onOpenClip}
           >
             {clipLabel ?? 'No clips'}
+            <Tip label="Edit this clip" keys={['E']} />
           </button>
           <button
             type="button"
             className={`${ui.tip} ${styles.navArrow}`}
             aria-label="Next clip"
-            data-tip="Next clip (↓ or ])"
             disabled={!hasClips}
             onClick={onNextClip}
           >
-            <ChevronRight size={18} />
+            <ChevronRight size={16} />
+            <Tip label="Next clip" keys={['↓', ']']} />
           </button>
         </div>
       </div>
@@ -113,14 +114,14 @@ export function TransportBar({
           type="button"
           className={`${ui.tip} ${styles.mark} ${marking ? styles.marking : ''}`}
           aria-label={marking ? 'Mark end' : 'Mark start'}
-          data-tip={marking ? 'Mark end (Space)' : 'Mark start (Space)'}
           onClick={onMark}
         >
           <span className={marking ? styles.stop : styles.ring} />
+          <Tip label={marking ? 'Mark end' : 'Mark start'} keys={['Space']} />
         </button>
-        <span className={styles.caption} aria-hidden="true">
+        <kbd className={ui.kbd} aria-hidden="true">
           Space
-        </span>
+        </kbd>
       </div>
 
       <div className={`${styles.cluster} ${styles.end}`}>
@@ -132,21 +133,21 @@ export function TransportBar({
               role="radio"
               aria-checked={s === speed}
               className={`${ui.tip} ${styles.segment} ${s === speed ? styles.segmentActive : ''}`}
-              data-tip={`${s}× speed (S cycles)`}
               onClick={() => onSpeed(s)}
             >
               {s}×
+              <Tip label={`${s}× speed, cycle with`} keys={['S']} />
             </button>
           ))}
         </div>
         <button
           type="button"
-          className={`${iconTip} ${ui.tipEnd} ${styles.secondary}`}
+          className={`${iconTip} ${ui.tipEnd}`}
           aria-label="Keyboard shortcuts"
-          data-tip="Keyboard shortcuts (?)"
           onClick={onShowShortcuts}
         >
           <span className={styles.question}>?</span>
+          <Tip label="Keyboard shortcuts" keys={['?']} />
         </button>
       </div>
     </div>
