@@ -27,6 +27,7 @@ decisions. If something here is impossible, say so in the report instead of impr
    Details in "Phase 3: Timeline" below.
 4. Desktop look: denser, squarer controls so the editor reads as a desktop tool, not a phone
    app. Details in "Phase 4: Desktop look" below.
+5. Accurate progress for opening videos and for Join. Details in "Phase 5: Progress" below.
 
 ## Screens
 
@@ -283,9 +284,9 @@ modal.
 1. Summary row: "N clips · m:ss total · about X MB" (size estimate from source bitrate).
 2. Mode: two radio cards, Fast (default) and Precise, each with a one-line explanation as above.
 3. Primary button "Join N clips". Secondary "Cancel".
-4. While running: a progress bar with the current segment ("Segment 3 of 12"), overall percent
-   from ffmpeg's progress events weighted by segment duration, the elapsed time, and a "Stop"
-   button. All editor shortcuts are inert while the dialog is open (the Dialog component already
+4. While running: the progress bar described in "Phase 5: Progress" (one bar over download,
+   cutting, combining and saving, with a phase label, true percent, elapsed and remaining time)
+   and a "Stop" button. All editor shortcuts are inert while the dialog is open (the Dialog component already
    does this).
 5. When done: "Saved <name>" with the final size, buttons "Save again" and "Done". The download
    starts automatically once.
@@ -541,3 +542,91 @@ overlap dot and the playhead head. All times use `font-variant-numeric: tabular-
   selected. No page scroll at 1024×768 or 1440×900; every control still has its tooltip; keyboard
   focus rings visible; the mark, speed and clip navigation still work by mouse and key.
 - Whole test suite, lint, typecheck, Prettier and build pass. No new dependencies.
+
+## Phase 5: Progress
+
+Settled. Two places show progress and both must be honest: the number on screen is the share of
+the real work that is done, it never sits at one value while work continues, and the time left
+comes from measured speed, not a guess. Where this conflicts with "Join dialog" above, this wins.
+
+### Join progress model (`src/lib/join/progress.ts`, pure, unit tested)
+
+- The job is a list of **phases**, each with an amount of work and a rate that converts work into
+  expected seconds. The bar shows `expectedSecondsDone / expectedSecondsTotal`, so a phase's
+  share of the bar is its share of the expected time, not an equal slice.
+  - `download`: bytes of the core files still to fetch (0 when the core is already loaded in this
+    page). Work is bytes; rate is bytes per second, measured live from the first chunk, with an
+    assumed 5 MB/s until 1 s of data exists.
+  - `cut`: one entry per segment, work is the segment's duration in seconds, rate is output
+    seconds per wall second for the mode (`fast` or `precise`). Progress inside a segment comes
+    from ffmpeg's `progress` event `time` as today (`segmentRatio`).
+  - `concat`: work is the total output duration, rate is the `concat` rate. ffmpeg's `progress`
+    events during the concat exec drive it (`time / totalDuration`); today they are ignored.
+  - `save`: reading the output file and making the Blob, work is the estimated output bytes at a
+    fixed 200 MB/s. Small, but it keeps the bar moving at the end instead of stalling at 99%.
+- **Rates are learned.** Defaults: fast 20, precise 0.15, concat 40 (output seconds per second),
+  download 5 MB/s. During a run the model measures each phase's real rate (work done over wall
+  time, ignoring the first 2 s of a phase) and, when the phase finishes, stores it in
+  `localStorage` under `vbclipper:join-rates` as `{ version: 1, fast, precise, concat, download }`.
+  The next join starts from the stored rates. The estimate shown on the Precise mode card before
+  starting uses the stored rate too.
+- **Remaining time** is the remaining expected seconds at the current measured rates, smoothed
+  with an exponential moving average (factor 0.3 per update) so it does not flicker. Shown as
+  "about 4 min left", "about 1 min left" or "under a minute left"; before 3 s of measurements the
+  label is "Estimating…". Elapsed time stays.
+- **Percent** is `Math.floor(fraction * 100)`, rises monotonically within a run (a later lower
+  value is clamped to the last shown), and reads 100% only when the Blob exists. The only reset is
+  the Fast-to-Precise fallback: the bar restarts at the end of the download share with the label
+  "Switched to Precise: re-encoding" and the Precise rates.
+- **Phase label** above the bar: "Downloading ffmpeg · 12.3 of 31.5 MB", "Cutting clip 3 of 12",
+  "Combining clips", "Saving", then "Saved <name>". When the download total is unknown (no
+  Content-Length), show bytes received and treat the download work as 31 MB.
+
+### Core download with progress (`src/join/ffmpeg.ts`)
+
+- Fetch each core file (`core.js`, `core.wasm`, and the worker for the multi-thread core) with
+  `fetch` and a `ReadableStream` reader, reporting `{ received, total }` per chunk, then hand
+  `ffmpeg.load` blob URLs for all of them (as `@ffmpeg/util`'s `toBlobURL` does). Blob URLs are
+  cached for the page so a second join skips the phase. The 8 s multi-thread timeout and the
+  single-thread fallback stay exactly as specified in Phase 2; a fallback does not re-download
+  files it already has.
+- `FFmpegLike.load` gains an optional `onProgress({ received, total })` callback so the runner can
+  feed the model; the test fake records it.
+
+### Runner events (`src/lib/join/runner.ts`)
+
+- `JoinEvent` carries `phase: 'download' | 'cut' | 'concat' | 'save' | 'fallback' | 'done'`,
+  `progress` (the model's overall fraction), `segmentIndex`, `remainingSeconds | null`,
+  `label` (the phase label text) and `log`. The dialog renders events; it computes nothing itself.
+- Progress events during concat are forwarded (today `onProgress` returns early outside the
+  segment phase).
+
+### Opening videos
+
+- **Home**: from the moment a file is picked until the editor opens, the Choose Video button (or
+  the Continue card) is disabled and reads "Opening saturday-game.mp4…" with a 2px indeterminate
+  bar under it (the duration probe is one metadata read with nothing to measure). Picking several
+  files for Continue Session reads "Opening 2 of 3…" and the bar is determinate, files done over
+  files total.
+- **Editor plus tile**: while an added file is being probed the tile shows a spinner glyph and is
+  disabled; the same "Opening…" count applies for several files.
+- **Preview frames**: `ThumbnailStore` exposes `progress(sourceId): { done, total }` and notifies
+  subscribers as frames land. While a block's frames are incomplete its header shows
+  "Preparing frames 12/25" in caption colour after the duration, and a 2px accent progress line
+  runs along the bottom edge of the header, `done / total` wide. Both disappear when done. The
+  trim strip shows the same 2px line along its bottom edge while its own frames are pending.
+
+### Verification
+
+- Unit tests: phase weighting (a 30 MB download at 5 MB/s plus 60 s of Precise at 0.15 gives the
+  download about 1.5% of the bar), learned rates round-trip through storage, monotonic percent,
+  fallback reset, remaining-time smoothing, label text, download reader with a fake stream that
+  has and lacks Content-Length, concat progress forwarded.
+- Browser: no Join in the built-in pane (the download prompt interrupts the user). Use headless
+  Chrome over CDP with downloads denied (`Browser.setDownloadBehavior` deny), a generated 20 min
+  640×360 `testsrc` video (`-preset ultrafast`) and clips totalling about 2 min. Run Precise once
+  cold: the download phase must show bytes, the bar must move through every phase without a stall
+  longer than 2 s, percent must never go backwards, and the remaining-time label at 25% progress
+  must be within 30% of the actual remaining wall time. Run Fast once warm: no download phase,
+  remaining time shown. Reload and confirm the Precise card's estimate uses the learned rate.
+  Open a video from Home and confirm the "Opening…" state, and watch a block header count frames.
