@@ -10,7 +10,7 @@ import {
 import { Tip } from '../../components/Tip'
 import ui from '../../components/ui.module.css'
 import { useCoarsePointer } from '../../hooks/useCoarsePointer'
-import { SPEEDS } from '../../lib/speed'
+import { SPEEDS, nextSpeed } from '../../lib/speed'
 import styles from './TransportBar.module.css'
 
 type Props = {
@@ -85,7 +85,7 @@ export function TransportBar({
           </button>
           <button
             type="button"
-            className={iconTip}
+            className={`${iconTip} ${styles.seek}`}
             aria-label="Back 5 seconds"
             onClick={() => onSeekBy(-5)}
           >
@@ -94,7 +94,7 @@ export function TransportBar({
           </button>
           <button
             type="button"
-            className={iconTip}
+            className={`${iconTip} ${styles.seek}`}
             aria-label="Forward 5 seconds"
             onClick={() => onSeekBy(5)}
           >
@@ -181,11 +181,21 @@ export function TransportBar({
             </button>
           ))}
         </div>
+        {/* Phones have no room for the segments: one button shows the speed and cycles it. */}
+        <button
+          type="button"
+          className={`${ui.tip} ${ui.tipEnd} ${ui.touchTarget} ${styles.speedCycle}`}
+          aria-label={`Playback speed ${speed}×, change to ${nextSpeed(speed)}×`}
+          onClick={() => onSpeed(nextSpeed(speed))}
+        >
+          {speed}×
+          <Tip label="Cycle speed" keys={['S']} />
+        </button>
         {/* Nothing to list without a keyboard; the ? key still opens it. */}
         {!coarse && (
           <button
             type="button"
-            className={`${iconTip} ${ui.tipEnd}`}
+            className={`${iconTip} ${ui.tipEnd} ${styles.help}`}
             aria-label="Keyboard shortcuts"
             onClick={onShowShortcuts}
           >

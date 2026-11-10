@@ -208,17 +208,44 @@
   }
 }
 
+/* Phones only, in place of the segmented control. */
+.speedCycle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: var(--control-height);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-accent);
+  font-size: var(--font-body);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--motion),
+    opacity var(--motion);
+}
+
+.speedCycle:hover {
+  background: var(--color-hover);
+}
+
+.speedCycle:active {
+  opacity: var(--pressed-opacity);
+}
+
 /*
- * Phones: one row. The mark button grows to 56px in the middle; every other control except the
- * clip label shares the rest, shrinking from 44px wide as the screen narrows (about 30px at 390px,
- * where ten 44px targets cannot fit). Their touch targets stay 44px tall but only as wide as the
- * control, so neighbours never overlap.
+ * Phones: one row of six. Play, the clip navigation, the 56px mark button and one speed button
+ * that cycles; the 5 s seeks (the filmstrip seeks by touch), the segments and "?" are hidden.
+ * Every control is 44px wide and the clip label takes the rest, so the row fits down to 340px.
  */
 @media (max-width: 699px) {
   .bar {
     display: flex;
-    justify-content: space-between;
-    gap: 6px;
+    gap: 8px;
     min-height: 56px;
   }
 
@@ -226,47 +253,31 @@
     display: contents;
   }
 
-  .cluster,
-  .clipNav,
-  .segmented {
-    flex: 0 1 auto;
-    min-width: 0;
+  .seek,
+  .segmented,
+  .help {
+    display: none;
   }
 
-  .cluster {
-    gap: 2px;
+  .speedCycle {
+    display: inline-flex;
   }
 
-  /* Its label does not shrink, so its two arrows would otherwise give up the most. */
-  .clipNav {
-    flex-shrink: 0.7;
-  }
-
-  .cluster > button,
   .cluster .play,
-  .navArrow,
-  .segment {
-    flex: 0 1 auto;
+  .navArrow {
     width: 44px;
+    min-width: 44px;
+  }
+
+  .clipNav {
+    flex: 1 1 auto;
     min-width: 0;
   }
 
   .navLabel {
-    flex: none;
-    min-width: 0;
+    flex: 1 1 auto;
+    min-width: 44px;
     padding: 0 6px;
-  }
-
-  .segment {
-    padding: 0 4px;
-  }
-
-  .cluster > button::before,
-  .navArrow::before,
-  .navLabel::before,
-  .segment::before {
-    right: 0;
-    left: 0;
   }
 
   .center {

@@ -152,8 +152,9 @@
  * hidden ones cannot be hit by accident.
  */
 @media (pointer: coarse) {
+  /* 44px for the buttons plus the 1px separator under them. */
   .row {
-    height: 44px;
+    height: 45px;
   }
 
   .trash {
