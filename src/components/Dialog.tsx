@@ -34,13 +34,16 @@ export function Dialog({ title, onClose, children, width, closeLabel = 'Done' }:
   const [opener] = useState(() => document.activeElement)
 
   useLayoutEffect(() => {
-    if (!dialogRef.current?.contains(document.activeElement)) {
-      doneRef.current?.focus({ preventScroll: true })
-    }
+    const dialog = dialogRef.current
+    if (!dialog?.contains(document.activeElement)) doneRef.current?.focus({ preventScroll: true })
     return () => {
-      if (opener instanceof HTMLElement && opener.isConnected) {
-        opener.focus({ preventScroll: true })
-      }
+      // Only once the dialog has really left the page: React's development mode also runs this
+      // cleanup for a dialog that stays mounted.
+      queueMicrotask(() => {
+        if (dialog?.isConnected) return
+        if (opener instanceof HTMLElement && opener.isConnected)
+          opener.focus({ preventScroll: true })
+      })
     }
   }, [opener])
 
