@@ -88,15 +88,27 @@ read-only, never uploaded or copied into memory.
 - Fast (default) stream-copies each clip and then concatenates them. It takes seconds, but cuts
   can only land on keyframes, so a clip may start up to one keyframe interval early (usually
   under a second on phone recordings).
-- Precise re-encodes each clip with H.264/AAC, so cuts are frame-accurate. It is much slower in
-  the browser; the mode card shows an estimate at the speed this browser managed last time.
+- Precise re-encodes each clip with H.264/AAC, so cuts are frame-accurate, and keeps each
+  frame's original timing (a variable-frame-rate screen recording is not padded to 120 fps). It
+  is much slower in the browser; the mode card shows an estimate at the speed this browser
+  managed last time.
+
+Before a join reads a video, it copies it once into the browser's private storage (the Origin
+Private File System), shown as "Preparing video · 1.2 of 4.0 GB". Chrome on macOS takes about a
+second for every read of a file picked from your own folders, and ffmpeg reads its input in many
+small pieces, so reading the picked file directly made a join of two short clips take minutes. The
+copy is made with one streaming read in a worker and reads back in a fraction of a millisecond.
+Later joins in the same editor session reuse it; leaving the editor (Home, Back or the error
+screen) deletes it, and the app deletes any leftovers when it starts. The copy needs free space
+for the videos plus 10%. Without that space, or in a browser that cannot write private files from a
+worker (older Safari), Join reads the picked file directly and the dialog says it may be slow.
 
 While a join runs, one bar covers the whole job: downloading ffmpeg (about 32 MB with the bytes shown, only
-for the first join on this device, since the service worker keeps it), cutting each clip,
+for the first join on this device, since the service worker keeps it), preparing the video, cutting each clip,
 combining them and saving. Each part takes its share of the bar by how long it is expected to take, so the percent tracks real work
 and never moves backwards (except once, if Fast has to switch to Precise). The time left comes
 from the speed measured during the run, smoothed so it does not flicker, and reads "Estimating…"
-for the first few seconds. The measured speeds (download, Fast, Precise and combining) are kept
+for the first few seconds. The measured speeds (download, preparing, Fast, Precise and combining) are kept
 in `localStorage` under `vbclipper:join-rates`, so the next join starts from them.
 
 Opening videos shows progress too: Choose Video and Continue Session read "Opening <name>…" (or
@@ -136,6 +148,8 @@ Shortcuts are ignored while focus is in a text input.
 - `src/media/`: reading a file's duration, the editor's files and object URLs, and the in-memory
   thumbnail cache that both filmstrips draw from.
 - `src/join/ffmpeg.ts`: the `@ffmpeg/ffmpeg` adapter the join runner uses in the browser.
+- `src/join/staging.ts`, `stage.worker.ts` and `stageCopy.ts`: copying the sources into the
+  private file system before a join, and deleting the copies.
 - `src/hooks/`: the video player that plays the sources back to back, keyboard shortcuts,
   persistence, toasts, the "A new version is ready" prompt, pointer drags, element width.
 - `src/screens/`: Home and Editor screens, with the editor's timeline, transport bar, clip list,
