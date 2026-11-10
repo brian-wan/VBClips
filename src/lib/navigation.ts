@@ -16,10 +16,8 @@ export function currentClipIndex(
   selectedId: string | null,
 ): number {
   const selected = clips.findIndex((c) => c.id === selectedId)
-  if (selected >= 0) {
-    const clip = clips[selected]
-    if (playhead >= clip.start - EPSILON && playhead <= clip.end + EPSILON) return selected
-  }
+  const clip = clips[selected]
+  if (clip && playhead >= clip.start - EPSILON && playhead <= clip.end + EPSILON) return selected
   let index = -1
   clips.forEach((clip, i) => {
     if (clip.start <= playhead + EPSILON) index = i
@@ -50,7 +48,8 @@ export function prevClipIndex(
 ): number {
   if (clips.length === 0) return -1
   const current = currentClipIndex(clips, playhead, selectedId)
-  if (current < 0) return 0
-  if (playhead - clips[current].start > PREV_RESTART_WINDOW) return current
+  const clip = clips[current]
+  if (!clip) return 0
+  if (playhead - clip.start > PREV_RESTART_WINDOW) return current
   return Math.max(0, current - 1)
 }

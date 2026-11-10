@@ -9,7 +9,7 @@ type Props = {
   times: readonly number[]
   /** The trim strip's frames are extracted before the timeline's. */
   priority?: boolean
-  className?: string
+  className?: string | undefined
 }
 
 const sameTimes = (a: readonly number[], b: readonly number[]) =>

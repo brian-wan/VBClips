@@ -240,9 +240,9 @@ export async function runJoin({
   const onProgress: ProgressListener = ({ time }) => {
     heardFromFFmpeg()
     const { stage } = model.view()
-    if (stage === 'cut') {
-      const index = current.segmentIndex
-      model.cut(index, segmentRatio(time, segments[index]), now())
+    const segment = segments[current.segmentIndex]
+    if (stage === 'cut' && segment) {
+      model.cut(current.segmentIndex, segmentRatio(time, segment), now())
     } else if (stage === 'concat') {
       model.concat(segmentRatio(time, { start: 0, end: outputSeconds }), now())
     } else return
@@ -264,8 +264,7 @@ export async function runJoin({
   const segmentFiles = segments.map((_, i) => segmentFileName(i))
 
   const render = async (renderMode: JoinMode): Promise<boolean> => {
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i]
+    for (const [i, seg] of segments.entries()) {
       const file = files[seg.sourceIndex]
       if (!file) {
         await removeAll(segmentFiles.slice(0, i))
@@ -299,8 +298,8 @@ export async function runJoin({
     stopTicking()
     // The download runs in the page, where terminate() cannot reach it.
     if (signal?.aborted) throw new JoinCancelled()
-    for (let i = 0; i < files.length; i++) {
-      await ffmpeg.mount(files[i], mountPoint(i))
+    for (const [i, file] of files.entries()) {
+      await ffmpeg.mount(file, mountPoint(i))
       mounted.push(mountPoint(i))
     }
 

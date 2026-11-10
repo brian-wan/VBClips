@@ -70,10 +70,11 @@ export function findOverlappingIds(clips: readonly Clip[]): Set<string> {
   const ids = new Set<string>()
   for (const group of groupBySource(clips).values()) {
     const sorted = sortClips(group)
-    for (let i = 0; i < sorted.length; i++) {
-      for (let j = i + 1; j < sorted.length && sorted[j].start < sorted[i].end; j++) {
-        ids.add(sorted[i].id)
-        ids.add(sorted[j].id)
+    for (const [i, clip] of sorted.entries()) {
+      for (const later of sorted.slice(i + 1)) {
+        if (later.start >= clip.end) break
+        ids.add(clip.id)
+        ids.add(later.id)
       }
     }
   }

@@ -162,8 +162,9 @@ export function Home({ onOpen, error, onError }: Props) {
       if (ids.has(id)) next.set(id, file)
     }
     const matchedNone = files.every((file) => !ids.has(fingerprint(file)))
-    if (session.sources.length === 1 && matchedNone && files.length > 0) {
-      setMismatch(files[0])
+    const [first] = files
+    if (session.sources.length === 1 && matchedNone && first) {
+      setMismatch(first)
       return
     }
     setMismatch(null)
@@ -175,11 +176,12 @@ export function Home({ onOpen, error, onError }: Props) {
   const handleFiles = (files: File[], mode: PickMode) => {
     if (opening) return
     onError(null)
-    if (files.length === 0) return
+    const [first] = files
+    if (!first) return
     const matchesSaved =
       saved !== null && files.some((f) => saved.sources.some((s) => s.id === fingerprint(f)))
     if (saved && (mode === 'continue' || matchesSaved)) addMatches(saved, files)
-    else void openNew(files[0])
+    else void openNew(first)
   }
 
   const onDrop = (e: DragEvent) => {
@@ -200,6 +202,8 @@ export function Home({ onOpen, error, onError }: Props) {
   }
 
   const missing = saved && continuing ? saved.sources.filter((s) => !found.has(s.id)) : []
+  /** The one saved source a mismatched file was compared with. */
+  const expected = saved?.sources[0]
 
   return (
     <main
@@ -337,11 +341,11 @@ export function Home({ onOpen, error, onError }: Props) {
         </div>
       )}
 
-      {saved && mismatch && (
+      {saved && mismatch && expected && (
         <div className={styles.mismatch} role="alert">
           <p>
-            That doesn’t look like the same video (expected {saved.sources[0].name},{' '}
-            {formatBytes(saved.sources[0].size)})
+            That doesn’t look like the same video (expected {expected.name},{' '}
+            {formatBytes(expected.size)})
           </p>
           <div className={styles.mismatchActions}>
             <button

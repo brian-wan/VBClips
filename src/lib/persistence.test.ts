@@ -90,7 +90,7 @@ describe('persistence', () => {
     saveSession(store, buildSavedSession([source], clips, 0, 1))
     saveSession(store, buildSavedSession([second, source], [], 0, 2))
     expect(store.length).toBe(1)
-    expect(loadSession(store)?.sources[0].name).toBe('court2.mov')
+    expect(loadSession(store)?.sources[0]?.name).toBe('court2.mov')
   })
 
   it('keeps the old session when writing the new one fails', () => {
@@ -101,7 +101,7 @@ describe('persistence', () => {
       },
     })
     expect(() => saveSession(full, buildSavedSession([second], [], 0, 2))).toThrow()
-    expect(loadSession(store)?.sources[0].name).toBe('match.mp4')
+    expect(loadSession(store)?.sources[0]?.name).toBe('match.mp4')
   })
 
   it('clears saved sessions but leaves other keys', () => {

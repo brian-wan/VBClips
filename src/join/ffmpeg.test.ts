@@ -76,10 +76,10 @@ function fakeServer(files: Record<string, number[]>, withLength = true) {
   const fetched: string[] = []
   const blobs = new Map<string, Blob>()
   const downloader = new CoreDownloader({
-    fetch: async (url, { signal }) => {
-      signal?.throwIfAborted()
+    fetch: (url, { signal }) => {
+      if (signal?.aborted) return Promise.reject(signal.reason as Error)
       fetched.push(url)
-      return streamed(files[url], withLength)
+      return Promise.resolve(streamed(files[url] ?? [], withLength))
     },
     createObjectURL: (blob) => {
       const url = `blob:${blobs.size}`
@@ -183,7 +183,7 @@ describe('CoreDownloader', () => {
 
   it('fails on an HTTP error', async () => {
     const downloader = new CoreDownloader({
-      fetch: async () => new Response('missing', { status: 404 }),
+      fetch: () => Promise.resolve(new Response('missing', { status: 404 })),
     })
     await expect(downloader.download(config(false))).rejects.toThrow(/HTTP 404/)
   })
@@ -209,7 +209,7 @@ function setup(
     coreConfig: config,
     timeoutMs: 8000,
     choice,
-    download: download ?? (async (urls) => urls),
+    download: download ?? ((urls) => Promise.resolve(urls)),
   })
   const logs: string[] = []
   adapter.on('log', ({ message }: { message: string }) => logs.push(message))
@@ -224,7 +224,7 @@ describe('BrowserFFmpeg.load', () => {
     const { adapter, cores, logs, choice } = setup(false)
     await adapter.load()
     expect(cores).toHaveLength(1)
-    expect(cores[0].loads).toEqual([config(true)])
+    expect(cores[0]?.loads).toEqual([config(true)])
     expect(logs).toEqual([])
     expect(choice.singleThreadOnly).toBe(false)
   })
@@ -237,10 +237,10 @@ describe('BrowserFFmpeg.load', () => {
 
     await vi.advanceTimersByTimeAsync(1)
     await loading
-    expect(cores[0].terminated).toBe(true)
+    expect(cores[0]?.terminated).toBe(true)
     expect(cores).toHaveLength(2)
-    expect(cores[1].loads).toEqual([config(false)])
-    expect(cores[1].loaded).toBe(true)
+    expect(cores[1]?.loads).toEqual([config(false)])
+    expect(cores[1]?.loaded).toBe(true)
     expect(logs).toEqual([SINGLE_THREAD_FALLBACK_LOG])
     expect(choice.singleThreadOnly).toBe(true)
   })
@@ -254,11 +254,11 @@ describe('BrowserFFmpeg.load', () => {
     adapter.terminate()
     await adapter.load()
     expect(cores).toHaveLength(2)
-    expect(cores[1].loads).toEqual([config(false), config(false)])
+    expect(cores[1]?.loads).toEqual([config(false), config(false)])
 
     const other = setup(true, choice)
     await other.adapter.load()
-    expect(other.cores[0].loads).toEqual([config(false)])
+    expect(other.cores[0]?.loads).toEqual([config(false)])
     expect(logs).toEqual([SINGLE_THREAD_FALLBACK_LOG])
     expect(other.logs).toEqual([])
   })
@@ -268,7 +268,7 @@ describe('BrowserFFmpeg.load', () => {
     const loading = adapter.load()
     await vi.advanceTimersByTimeAsync(8000)
     await loading
-    cores[1].emit('ffmpeg version 5.1.4')
+    cores[1]?.emit('ffmpeg version 5.1.4')
     expect(logs).toEqual([SINGLE_THREAD_FALLBACK_LOG, 'ffmpeg version 5.1.4'])
   })
 
@@ -278,7 +278,7 @@ describe('BrowserFFmpeg.load', () => {
     const reports: DownloadProgress[] = []
     await adapter.load((progress) => reports.push(progress))
     expect(reports.at(-1)).toEqual({ received: 1310, total: 1310 })
-    expect(cores[0].loads[0].wasmURL).toMatch(/^blob:/)
+    expect(cores[0]?.loads[0]?.wasmURL).toMatch(/^blob:/)
 
     adapter.terminate()
     reports.length = 0
@@ -288,9 +288,9 @@ describe('BrowserFFmpeg.load', () => {
 
   it('passes the abort signal to the download', async () => {
     const signals: (AbortSignal | undefined)[] = []
-    const { adapter } = setup(false, undefined, async (urls, _, signal) => {
+    const { adapter } = setup(false, undefined, (urls, _, signal) => {
       signals.push(signal)
-      return urls
+      return Promise.resolve(urls)
     })
     const controller = new AbortController()
     await adapter.load(undefined, controller.signal)
@@ -302,10 +302,10 @@ describe('BrowserFFmpeg.load', () => {
     const loading = adapter.load()
     const outcome = expect(loading).rejects.toThrow('ffmpeg did not start')
     await vi.advanceTimersByTimeAsync(29_999)
-    expect(cores[0].terminated).toBe(false)
+    expect(cores[0]?.terminated).toBe(false)
     await vi.advanceTimersByTimeAsync(1)
     await outcome
-    expect(cores[0].terminated).toBe(true)
+    expect(cores[0]?.terminated).toBe(true)
   })
 
   it('gives the single-thread core its own 30 s after a multi-thread timeout', async () => {
@@ -321,17 +321,17 @@ describe('BrowserFFmpeg.load', () => {
 
   it('hands the signal to the core load and checks it just before', async () => {
     const controller = new AbortController()
-    const { adapter, cores } = setup(false, undefined, async (urls) => {
+    const { adapter, cores } = setup(false, undefined, (urls) => {
       controller.abort()
-      return urls
+      return Promise.resolve(urls)
     })
     await expect(adapter.load(undefined, controller.signal)).rejects.toThrow(/abort/i)
-    expect(cores[0].loads).toEqual([])
+    expect(cores[0]?.loads).toEqual([])
 
     const other = setup(false)
     const live = new AbortController()
     await other.adapter.load(undefined, live.signal)
-    expect(other.cores[0].loadSignals).toEqual([live.signal])
+    expect(other.cores[0]?.loadSignals).toEqual([live.signal])
   })
 
   it('counts the single-thread files on top of the multi-thread ones after a timeout', async () => {
@@ -346,6 +346,6 @@ describe('BrowserFFmpeg.load', () => {
     expect(reports.map((r) => r.received)).toEqual(
       [...reports.map((r) => r.received)].sort((a, b) => a - b),
     )
-    expect(cores[1].loads[0].coreURL).toMatch(/^blob:/)
+    expect(cores[1]?.loads[0]?.coreURL).toMatch(/^blob:/)
   })
 })

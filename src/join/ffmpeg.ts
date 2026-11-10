@@ -93,7 +93,7 @@ export async function readChunks(
     }
     const { done, value } = outcome
     if (done) return chunks
-    chunks.push(value as Uint8Array<ArrayBuffer>)
+    chunks.push(value)
     onChunk(value.byteLength)
   }
 }
@@ -101,7 +101,7 @@ export async function readChunks(
 const mimeType = (url: string) => (/\.wasm$/.test(url) ? 'application/wasm' : 'text/javascript')
 
 export type CoreDownloaderOptions = {
-  fetch?: (url: string, init: { signal?: AbortSignal }) => Promise<Response>
+  fetch?: (url: string, init: { signal?: AbortSignal | undefined }) => Promise<Response>
   createObjectURL?: (blob: Blob) => string
 }
 
@@ -111,12 +111,15 @@ export type CoreDownloaderOptions = {
  * fallback that needs a file it already has) download nothing.
  */
 export class CoreDownloader {
-  private readonly fetch: (url: string, init: { signal?: AbortSignal }) => Promise<Response>
+  private readonly fetch: (
+    url: string,
+    init: { signal?: AbortSignal | undefined },
+  ) => Promise<Response>
   private readonly createObjectURL: (blob: Blob) => string
   private readonly blobURLs = new Map<string, string>()
 
   constructor(options: CoreDownloaderOptions = {}) {
-    this.fetch = options.fetch ?? ((url, init) => fetch(url, init))
+    this.fetch = options.fetch ?? ((url, init) => fetch(url, { signal: init.signal ?? null }))
     this.createObjectURL = options.createObjectURL ?? ((blob) => URL.createObjectURL(blob))
   }
 
@@ -142,16 +145,16 @@ export class CoreDownloader {
         missing.map(async (url) => {
           const response = await this.fetch(url, { signal })
           if (!response.ok) throw new Error(`Could not download ${url} (HTTP ${response.status})`)
-          return response
+          return { url, response }
         }),
       )
-      const lengths = responses.map(contentLength)
+      const lengths = responses.map(({ response }) => contentLength(response))
       total = lengths.every((n) => n !== null)
         ? lengths.reduce<number>((sum, n) => sum + (n ?? 0), 0)
         : null
       onProgress?.(received, total)
       await Promise.all(
-        responses.map(async (response, i) => {
+        responses.map(async ({ url, response }) => {
           const chunks = await readChunks(
             response,
             (bytes) => {
@@ -160,8 +163,8 @@ export class CoreDownloader {
             },
             signal,
           )
-          const blob = new Blob(chunks, { type: mimeType(missing[i]) })
-          this.blobURLs.set(missing[i], this.createObjectURL(blob))
+          const blob = new Blob(chunks, { type: mimeType(url) })
+          this.blobURLs.set(url, this.createObjectURL(blob))
         }),
       )
     }

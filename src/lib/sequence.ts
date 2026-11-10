@@ -8,12 +8,13 @@ type Timed = { readonly duration: number }
 
 export type Location = { index: number; localTime: number }
 
-const lengthOf = (source: Timed) => (Number.isFinite(source.duration) ? source.duration : 0)
+const lengthOf = (source: Timed | undefined) =>
+  source && Number.isFinite(source.duration) ? source.duration : 0
 
 /** Sum of the durations before source `index`. */
 export function offsetOf(sources: readonly Timed[], index: number): number {
   let offset = 0
-  for (let i = 0; i < Math.min(index, sources.length); i++) offset += lengthOf(sources[i])
+  for (const source of sources.slice(0, Math.max(index, 0))) offset += lengthOf(source)
   return offset
 }
 
@@ -30,8 +31,8 @@ export function locate(sources: readonly Timed[], t: number): Location {
   if (sources.length === 0) return { index: -1, localTime: 0 }
   const target = Number.isFinite(t) ? Math.max(t, 0) : 0
   let offset = 0
-  for (let i = 0; i < sources.length; i++) {
-    const length = lengthOf(sources[i])
+  for (const [i, source] of sources.entries()) {
+    const length = lengthOf(source)
     if (target < offset + length) return { index: i, localTime: target - offset }
     offset += length
   }
@@ -60,8 +61,7 @@ export function moveSource<T>(sources: readonly T[], from: number, to: number): 
   const count = sources.length
   if (from < 0 || from >= count || to < 0 || to >= count || from === to) return [...sources]
   const next = [...sources]
-  const [moved] = next.splice(from, 1)
-  next.splice(to, 0, moved)
+  next.splice(to, 0, ...next.splice(from, 1))
   return next
 }
 

@@ -76,8 +76,8 @@ export function hitTest({
     return { kind: 'playhead' }
   }
 
-  for (let i = clips.length - 1; i >= 0; i--) {
-    const clip = clips[i]
+  // Later clips draw on top, so they win the hit test.
+  for (const clip of [...clips].reverse()) {
     if (x >= toX(clip.start) - CLIP_HIT_SLOP_PX && x <= toX(clip.end) + CLIP_HIT_SLOP_PX) {
       return { kind: 'clip', id: clip.id }
     }

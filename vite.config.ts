@@ -22,23 +22,23 @@ function serveFFmpegCoreUntransformed(): Plugin {
     name: 'serve-ffmpeg-core-untransformed',
     apply: 'serve',
     configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
+      server.middlewares.use((req, res, next) => {
         const url = req.url ?? ''
         if (url.includes('?') || !coreScript.test(url)) return next()
         const path = join(server.config.root, decodeURIComponent(url))
         if (!path.startsWith(join(server.config.root, 'node_modules'))) return next()
-        try {
-          const body = await readFile(path)
-          res.writeHead(200, {
-            'Content-Type': 'text/javascript',
-            // The app reads this to show download progress against a total.
-            'Content-Length': body.byteLength,
-            ...crossOriginIsolation,
-          })
-          res.end(body)
-        } catch {
-          next()
-        }
+        readFile(path).then(
+          (body) => {
+            res.writeHead(200, {
+              'Content-Type': 'text/javascript',
+              // The app reads this to show download progress against a total.
+              'Content-Length': body.byteLength,
+              ...crossOriginIsolation,
+            })
+            res.end(body)
+          },
+          () => next(),
+        )
       })
     },
   }

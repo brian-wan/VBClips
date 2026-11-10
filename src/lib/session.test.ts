@@ -145,14 +145,14 @@ describe('clip changes', () => {
 
   it('edits a clip and rejects invalid spans', () => {
     const edited = run(withClip, { type: 'updateClip', clip: clip('a', 1, 4) })
-    expect(edited.clips[0].end).toBe(4)
+    expect(edited.clips[0]?.end).toBe(4)
     const invalid = run(withClip, { type: 'updateClip', clip: clip('a', 1, 1.1) })
     expect(invalid).toBe(withClip)
   })
 
   it('never moves a clip to another source through an edit', () => {
     const edited = run(withClip, { type: 'updateClip', clip: clip('a', 1, 4, 'other') })
-    expect(edited.clips[0].sourceId).toBe(a.id)
+    expect(edited.clips[0]?.sourceId).toBe(a.id)
   })
 
   it('ignores no-op edits so they do not fill history', () => {

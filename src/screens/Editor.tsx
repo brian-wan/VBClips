@@ -299,12 +299,12 @@ export function Editor({
       fresh.map(async (file) => {
         const source = await loadSource(file)
         setOpening(advanceOpening)
-        return source
+        return { file, source }
       }),
     )
-    loaded.forEach((source, i) => {
+    loaded.forEach(({ file, source }) => {
       if (!source) {
-        showToast(unplayableMessage(fresh[i].name), { timeout: 5000 })
+        showToast(unplayableMessage(file.name), { timeout: 5000 })
         return
       }
       files.add(source.meta.id, source.file)
@@ -379,6 +379,7 @@ export function Editor({
   )
 
   const clipWord = clips.length === 1 ? 'Clip' : 'Clips'
+  const onlySource = sources.length === 1 ? sources[0] : undefined
 
   return (
     <div
@@ -414,10 +415,10 @@ export function Editor({
           </button>
         </div>
         <div className={styles.fileInfo}>
-          {sources.length === 1 ? (
+          {onlySource ? (
             <>
-              <span className={styles.fileName} title={sources[0].name}>
-                {sources[0].name}
+              <span className={styles.fileName} title={onlySource.name}>
+                {onlySource.name}
               </span>
               <span className={styles.fileDuration}>· {formatTime(duration)}</span>
             </>

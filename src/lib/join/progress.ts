@@ -120,11 +120,14 @@ export const FALLBACK_LABEL = 'Switched to Precise: re-encoding'
  * clock in.
  */
 export class JoinProgress {
+  /** Download, one cut per segment, concat, save: the order the work happens in. */
   private readonly entries: Entry[]
+  private readonly downloadEntry: Entry
+  private readonly concatEntry: Entry
   private readonly segmentCount: number
   private readonly rates: Rates
   private readonly startedAt: number
-  private readonly onLearn?: (rates: Partial<Rates>) => void
+  private readonly onLearn: ((rates: Partial<Rates>) => void) | undefined
   private readonly meters = new Map<RateKey, Meter>()
   private current = 0
   private shown = 0
@@ -144,22 +147,24 @@ export class JoinProgress {
     this.onLearn = onLearn
     this.segmentCount = segments.length
     const outputSeconds = segments.reduce((sum, s) => sum + Math.max(s.end - s.start, 0), 0)
+    this.downloadEntry = { stage: 'download', work: 0, done: 0, key: 'download' }
+    this.concatEntry = { stage: 'concat', work: outputSeconds, done: 0, key: 'concat' }
     this.entries = [
-      { stage: 'download', work: 0, done: 0, key: 'download' },
+      this.downloadEntry,
       ...segments.map((s): Entry => ({
         stage: 'cut',
         work: Math.max(s.end - s.start, 0),
         done: 0,
         key: mode,
       })),
-      { stage: 'concat', work: outputSeconds, done: 0, key: 'concat' },
+      this.concatEntry,
       { stage: 'save', work: Math.max(outputBytes, 0), done: 0, key: null },
     ]
   }
 
   /** Core download: bytes so far and the total, or null when the server did not say. */
   download(received: number, total: number | null, now: number): void {
-    const entry = this.entries[0]
+    const entry = this.downloadEntry
     entry.work = total ?? Math.max(ASSUMED_DOWNLOAD_BYTES, received)
     entry.done = Math.min(received, entry.work)
     this.starting = false
@@ -183,19 +188,19 @@ export class JoinProgress {
   /** Segment `index` is `ratio` written. */
   cut(index: number, ratio: number, now: number): void {
     const position = 1 + index
-    this.enter(position, now)
     const entry = this.entries[position]
+    if (entry?.stage !== 'cut' || !entry.key) return
+    this.enter(position, now)
     entry.done = entry.work * clamp(ratio, 0, 1)
     const clip = `clip ${index + 1} of ${this.segmentCount}`
     this.label = this.fellBack ? `${FALLBACK_LABEL} ${clip}` : `Cutting ${clip}`
-    this.measure(entry.key as RateKey, now)
+    this.measure(entry.key, now)
     this.update(now)
   }
 
   concat(ratio: number, now: number): void {
-    const position = this.entries.length - 2
-    this.enter(position, now)
-    const entry = this.entries[position]
+    this.enter(this.entries.indexOf(this.concatEntry), now)
+    const entry = this.concatEntry
     entry.done = entry.work * clamp(ratio, 0, 1)
     this.label = 'Combining clips'
     this.measure('concat', now)
@@ -270,8 +275,8 @@ export class JoinProgress {
   private enter(position: number, now: number): void {
     if (position <= this.current) return
     this.starting = false
-    for (let i = this.current; i < position && i < this.entries.length; i++) {
-      const entry = this.entries[i]
+    for (const [i, entry] of this.entries.entries()) {
+      if (i < this.current || i >= position) continue
       entry.done = entry.work
       // The download's last sample is its last chunk; core start time is not download time.
       if (entry.key && entry.key !== 'download') this.measure(entry.key, now)

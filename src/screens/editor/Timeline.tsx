@@ -144,6 +144,7 @@ export function Timeline({
     const block = blockAt(clientX)
     if (!block) return null
     const source = sources[block.index]
+    if (!source) return null
     const x = clientX - block.rect.left
     const local = timeAtX(x, block.rect.width, source.duration)
     const target = hitTest({

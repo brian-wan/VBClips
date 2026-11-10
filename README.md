@@ -18,13 +18,15 @@ pnpm dev
 
 Then open the URL Vite prints (usually http://localhost:5173).
 
-| Script        | What it does                             |
-| ------------- | ---------------------------------------- |
-| `pnpm dev`    | Start the dev server                     |
-| `pnpm build`  | Type-check and build to `dist/`          |
-| `pnpm test`   | Run the Vitest unit tests for `src/lib/` |
-| `pnpm lint`   | Run ESLint                               |
-| `pnpm format` | Format with Prettier                     |
+| Script              | What it does                                                                    |
+| ------------------- | ------------------------------------------------------------------------------- |
+| `pnpm dev`          | Start the dev server                                                            |
+| `pnpm build`        | Type-check and build to `dist/`                                                 |
+| `pnpm test`         | Run the Vitest unit tests in `src/lib/`, `src/join/` and `src/playable.test.ts` |
+| `pnpm typecheck`    | Type-check without building                                                     |
+| `pnpm lint`         | Run ESLint with type-aware rules; any warning fails                             |
+| `pnpm format`       | Format with Prettier                                                            |
+| `pnpm format:check` | Check formatting without writing                                                |
 
 ## Using it
 
@@ -116,7 +118,13 @@ Cross-Origin-Embedder-Policy: require-corp
 ```
 
 Without them the app falls back to the single-thread core, which works everywhere but is slower,
-especially in Precise mode. The core's `.js`, `.wasm` and worker files are bundled as separate
+especially in Precise mode.
+
+Serve it over https (localhost is fine for development): cross-origin isolation and
+`crypto.randomUUID` both need a secure context, so plain http on a LAN address gets neither. And
+since `require-corp` blocks every cross-origin resource that does not send a
+`Cross-Origin-Resource-Policy` header, any asset added later from another origin (a font, an
+image CDN) must send one or be served from the app itself. The core's `.js`, `.wasm` and worker files are bundled as separate
 assets in `dist/assets/`, so the app never loads them from a CDN and works offline.
 
 ## Keyboard shortcuts
@@ -148,7 +156,7 @@ Shortcuts are ignored while focus is in a text input.
   thumbnail cache that both filmstrips draw from.
 - `src/join/ffmpeg.ts`: the `@ffmpeg/ffmpeg` adapter the join runner uses in the browser.
 - `src/hooks/`: the video player that plays the sources back to back, keyboard shortcuts,
-  persistence, toasts, routing.
+  persistence, toasts, pointer drags, element width.
 - `src/screens/`: Home and Editor screens, with the editor's timeline, transport bar, clip list,
   clip editor and Join dialog in `src/screens/editor/`; `src/components/`: shared UI (buttons,
   tooltips and key chips in `ui.module.css`, the `Tip` tooltip, dialogs, toasts). Design tokens

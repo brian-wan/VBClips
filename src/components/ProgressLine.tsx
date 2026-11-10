@@ -4,7 +4,7 @@ import styles from './ProgressLine.module.css'
 type Props = {
   /** 0..1, or null for work with nothing to measure (an indeterminate sweep). */
   value: number | null
-  className?: string
+  className?: string | undefined
   label?: string
 }
 

@@ -110,9 +110,9 @@ export function useVideoPlayer(
       return
     }
     const index = sources.findIndex((s) => s.id === currentIdRef.current)
-    if (index >= 0) {
+    const source = sources[index]
+    if (source) {
       lastIndex.current = index
-      const source = sources[index]
       if (source.url && loadedUrl.current !== source.url) {
         goTo(index, lastLocal.current, !video.paused)
       }
