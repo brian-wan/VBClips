@@ -161,3 +161,15 @@ Shortcuts are ignored while focus is in a text input.
   clip editor and Join dialog in `src/screens/editor/`; `src/components/`: shared UI (buttons,
   tooltips and key chips in `ui.module.css`, the `Tip` tooltip, dialogs, toasts). Design tokens
   (type scale, radii, control heights, colors) live in `src/index.css`.
+
+## License
+
+VBClipper Web is free software, licensed under the GNU General Public License, version 3 or (at
+your option) any later version (`GPL-3.0-or-later`). The full text is in [LICENSE](LICENSE).
+
+Join runs the cores from [ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm)
+(`@ffmpeg/core` and `@ffmpeg/core-mt`), which are builds of [FFmpeg](https://ffmpeg.org) that
+include the [x264](https://www.videolan.org/developers/x264.html) H.264 encoder used by Precise
+mode. Because of x264 those cores are licensed GPL-2.0-or-later, and since the app ships them in
+`dist/`, the app is published under the GPL too. FFmpeg and x264 remain under their own
+copyrights and licenses.
