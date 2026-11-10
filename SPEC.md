@@ -569,7 +569,10 @@ comes from measured speed, not a guess. Where this conflicts with "Join dialog" 
   download 5 MB/s. During a run the model measures each phase's real rate (work done over wall
   time, ignoring the first 2 s of a phase) and, when the phase finishes, stores it in
   `localStorage` under `vbclipper:join-rates` as `{ version: 1, fast, precise, concat, download }`.
-  The next join starts from the stored rates. The estimate shown on the Precise mode card before
+  The next join starts from the stored rates. The warm-up and the measurement run per rate key, not per
+  segment: all Fast cuts in a run form one measurement, so a run whose cuts total under 3 s learns
+  nothing and keeps the stored rate. The download rate is measured from the first chunk to the last
+  chunk only; core start time never counts toward it. The estimate shown on the Precise mode card before
   starting uses the stored rate too.
 - **Remaining time** is the remaining expected seconds at the current measured rates, smoothed
   with an exponential moving average (factor 0.3 per update) so it does not flicker. Shown as
@@ -580,7 +583,8 @@ comes from measured speed, not a guess. Where this conflicts with "Join dialog" 
   the Fast-to-Precise fallback: the bar restarts at the end of the download share with the label
   "Switched to Precise: re-encoding" and the Precise rates. During those cuts the label reads
   "Switched to Precise: re-encoding clip 3 of 12" so the clip count stays visible.
-- **Phase label** above the bar: "Downloading ffmpeg · 12.3 of 31.5 MB", "Cutting clip 3 of 12",
+- **Phase label** above the bar: "Downloading ffmpeg · 12.3 of 31.5 MB", "Starting ffmpeg" (from the
+  last byte until the core answers, including the multi-thread timeout wait), "Cutting clip 3 of 12",
   "Combining clips", "Saving", then "Saved <name>". When the download total is unknown (no
   Content-Length), show bytes received and treat the download work as 31 MB.
 
@@ -594,13 +598,18 @@ comes from measured speed, not a guess. Where this conflicts with "Join dialog" 
   files it already has. The 8 s timeout covers starting the multi-thread core only, not the
   download before it, so a slow network never forces the single-thread core.
 - `FFmpegLike.load` gains an optional `onProgress({ received, total })` callback so the runner can
-  feed the model; the test fake records it.
+  feed the model; the test fake records it. `load` also takes the join's `AbortSignal`: Stop during the
+  download aborts the fetches, and the runner checks the signal right after `load` resolves and
+  throws `JoinCancelled` before mounting anything, so a cancelled join never completes in the
+  background. A runner test covers abort during the download.
 
 ### Runner events (`src/lib/join/runner.ts`)
 
-- `JoinEvent` carries `phase: 'download' | 'cut' | 'concat' | 'save' | 'fallback' | 'done'`,
+- `JoinEvent` carries `phase: 'download' | 'start' | 'cut' | 'concat' | 'save' | 'fallback' | 'done'`,
   `progress` (the model's overall fraction), `segmentIndex`, `remainingSeconds | null`,
   `label` (the phase label text) and `log`. The dialog renders events; it computes nothing itself.
+  Events are coalesced to at most one per animation frame, so a download of thousands of chunks
+  does not mean thousands of renders. The dialog reads the stored Precise rate once when it opens.
 - Progress events during concat are forwarded (today `onProgress` returns early outside the
   segment phase).
 
@@ -610,7 +619,8 @@ comes from measured speed, not a guess. Where this conflicts with "Join dialog" 
   the Continue card) is disabled and reads "Opening saturday-game.mp4…" with a 2px indeterminate
   bar under it (the duration probe is one metadata read with nothing to measure). Picking several
   files for Continue Session reads "Opening 2 of 3…" and the bar is determinate, files done over
-  files total.
+  files total. Every Home control that opens or picks files ("Pick files", "Open without them",
+  "Use it anyway", "Pick another") is disabled while a probe is running.
 - **Editor plus tile**: while an added file is being probed the tile shows a spinner glyph and is
   disabled; the "Opening…" text and the "2 of 3" count live in its tooltip and aria-label, since
   the 48px tile has no room for text.
