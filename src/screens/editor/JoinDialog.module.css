@@ -123,17 +123,18 @@
   gap: 12px;
 }
 
-.loading {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
 .loadingLog {
   overflow: hidden;
   color: var(--color-text-secondary);
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: var(--font-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -29,7 +29,12 @@ function serveFFmpegCoreUntransformed(): Plugin {
         if (!path.startsWith(join(server.config.root, 'node_modules'))) return next()
         try {
           const body = await readFile(path)
-          res.writeHead(200, { 'Content-Type': 'text/javascript', ...crossOriginIsolation })
+          res.writeHead(200, {
+            'Content-Type': 'text/javascript',
+            // The app reads this to show download progress against a total.
+            'Content-Length': body.byteLength,
+            ...crossOriginIsolation,
+          })
           res.end(body)
         } catch {
           next()

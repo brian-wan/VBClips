@@ -7,7 +7,6 @@ import { getFFmpeg } from '../../join/ffmpeg'
 import { formatBytes } from '../../lib/bytes'
 import type { Clip } from '../../lib/clips'
 import {
-  DEFAULT_RATE,
   MAX_OUTPUT_BYTES,
   estimateOutputBytes,
   estimateSeconds,
@@ -17,6 +16,7 @@ import {
   totalDuration,
   type JoinMode,
 } from '../../lib/join/plan'
+import { LOADING_LABEL, loadRates, percentOf, remainingLabel } from '../../lib/join/progress'
 import {
   FALLBACK_REASON,
   JoinCancelled,
@@ -25,6 +25,7 @@ import {
   type JoinEvent,
 } from '../../lib/join/runner'
 import { formatTime } from '../../lib/time'
+import { browserStore } from '../../storage'
 import styles from './JoinDialog.module.css'
 
 type Props = {
@@ -37,8 +38,6 @@ type Props = {
 type Result = { url: string; name: string; size: number; fellBack: boolean }
 type Failure = { message: string; mode: JoinMode; log: string[] }
 
-type RateSample = { media: number; seconds: number }
-
 type State =
   | { kind: 'setup' }
   | {
@@ -46,14 +45,15 @@ type State =
       event: JoinEvent
       fellBack: boolean
       startedAt: number
-      sample: RateSample | null
       loadingLog: string | null
     }
   | { kind: 'done'; result: Result }
   | { kind: 'error'; failure: Failure }
 
 const LOG_TAIL = 20
-const SLOW_LOAD_SECONDS = 5
+
+/** Read in event handlers only; React's purity lint cannot tell `start` is one. */
+const clock = () => performance.now()
 
 const MODES: { mode: JoinMode; title: string; detail: (estimate: string) => string }[] = [
   {
@@ -115,44 +115,32 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
   const start = async (joinMode: JoinMode) => {
     const controller = new AbortController()
     abortRef.current = controller
-    const startedAt = performance.now()
+    const startedAt = clock()
     setNow(startedAt)
     setConfirmingStop(null)
     setCopied(false)
     let fellBack = false
-    let lastIndex = -1
-    let encodeStart = startedAt
-    let sample: RateSample | null = null
     let loadingLog: string | null = null
     setState({
       kind: 'running',
       fellBack,
       startedAt,
-      sample,
       loadingLog,
-      event: { phase: 'loading', mode: joinMode, segmentIndex: 0, progress: 0 },
+      event: {
+        phase: 'download',
+        mode: joinMode,
+        segmentIndex: 0,
+        progress: 0,
+        remainingSeconds: null,
+        label: LOADING_LABEL,
+      },
     })
 
-    // The encode rate is measured from the first segment's start, so loading the core and any
-    // Fast attempt before a fallback do not skew the Precise estimate.
     const onEvent = (event: JoinEvent) => {
-      if (event.log && event.phase === 'loading') loadingLog = event.log
+      if (event.log && event.phase === 'download') loadingLog = event.log
       else if (event.log && event.phase !== 'fallback') return
-      if (event.phase === 'fallback') {
-        fellBack = true
-        sample = null
-        lastIndex = -1
-      }
-      if (event.phase === 'segment' && event.segmentIndex !== lastIndex) {
-        lastIndex = event.segmentIndex
-        if (event.segmentIndex === 0) encodeStart = performance.now()
-        else
-          sample = {
-            media: totalDuration(segments.slice(0, event.segmentIndex)),
-            seconds: (performance.now() - encodeStart) / 1000,
-          }
-      }
-      setState({ kind: 'running', event, fellBack, startedAt, sample, loadingLog })
+      if (event.phase === 'fallback') fellBack = true
+      setState({ kind: 'running', event, fellBack, startedAt, loadingLog })
     }
 
     try {
@@ -161,6 +149,9 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
         files,
         segments,
         mode: joinMode,
+        outputName: name,
+        outputBytes: estimatedBytes,
+        store: browserStore(),
         onEvent,
         signal: controller.signal,
       })
@@ -205,7 +196,9 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
     }
   }
 
-  const preciseEstimate = formatEstimate(estimateSeconds('precise', segments))
+  const preciseEstimate = formatEstimate(
+    estimateSeconds('precise', segments, loadRates(browserStore()).precise),
+  )
   const clipWord = clips.length === 1 ? 'clip' : 'clips'
   const summary = `${clips.length} ${clipWord} · ${formatTime(total)} total · about ${formatBytes(estimatedBytes)}`
 
@@ -265,9 +258,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
         {state.kind === 'running' && (
           <Progress
             event={state.event}
-            segmentCount={segments.length}
             elapsed={(now - state.startedAt) / 1000}
-            remaining={remainingSeconds(state.event, total, state.sample)}
             fellBack={state.fellBack}
             loadingLog={state.loadingLog}
             confirmingStop={confirmingStop !== null}
@@ -345,22 +336,9 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
   )
 }
 
-/** Precise only: time left at the measured encode rate, or the default before one exists. */
-function remainingSeconds(
-  event: JoinEvent,
-  total: number,
-  sample: RateSample | null,
-): number | null {
-  if (event.mode !== 'precise' || event.phase !== 'segment') return null
-  const rate = sample && sample.seconds > 0 ? sample.media / sample.seconds : DEFAULT_RATE.precise
-  return (total * (1 - event.progress)) / rate
-}
-
 type ProgressProps = {
   event: JoinEvent
-  segmentCount: number
   elapsed: number
-  remaining: number | null
   fellBack: boolean
   loadingLog: string | null
   confirmingStop: boolean
@@ -371,9 +349,7 @@ type ProgressProps = {
 
 function Progress({
   event,
-  segmentCount,
   elapsed,
-  remaining,
   fellBack,
   loadingLog,
   confirmingStop,
@@ -381,23 +357,14 @@ function Progress({
   onConfirmStop,
   onKeepGoing,
 }: ProgressProps) {
-  const percent = Math.min(Math.floor(event.progress * 100), 99)
-  const stage =
-    event.phase === 'loading'
-      ? 'Loading ffmpeg'
-      : event.phase === 'concat'
-        ? 'Combining segments'
-        : `Segment ${event.segmentIndex + 1} of ${segmentCount}`
-  const modeLabel = event.mode === 'fast' ? 'Fast' : 'Precise'
+  const percent = percentOf(event.progress)
 
   return (
     <>
       {fellBack && <p className={styles.note}>{FALLBACK_REASON}</p>}
       <div className={styles.progress}>
         <div className={styles.progressRow}>
-          <span>
-            {modeLabel} · {stage}
-          </span>
+          <span className={styles.label}>{event.label}</span>
           <span className={styles.percent}>{percent}%</span>
         </div>
         <div
@@ -412,17 +379,10 @@ function Progress({
         </div>
         <div className={styles.progressRow}>
           <span className={styles.muted}>{formatTime(elapsed)} elapsed</span>
-          {remaining !== null && (
-            <span className={styles.muted}>{formatEstimate(remaining)} left</span>
-          )}
+          <span className={styles.muted}>{remainingLabel(event.remainingSeconds)}</span>
         </div>
-        {event.phase === 'loading' && (
-          <div className={styles.loading}>
-            {loadingLog && <span className={styles.loadingLog}>{loadingLog}</span>}
-            {elapsed >= SLOW_LOAD_SECONDS && (
-              <span className={styles.muted}>First load downloads about 30 MB</span>
-            )}
-          </div>
+        {event.phase === 'download' && loadingLog && (
+          <span className={styles.loadingLog}>{loadingLog}</span>
         )}
       </div>
       <div className={styles.actions}>

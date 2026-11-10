@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { segmentArgs, type Segment } from './plan'
+import { RATES_KEY } from './progress'
 import {
   FALLBACK_REASON,
   JoinCancelled,
   JoinError,
   runJoin,
+  type DownloadListener,
+  type DownloadProgress,
   type FFmpegLike,
   type JoinEvent,
   type LogListener,
@@ -21,6 +24,9 @@ class FakeFFmpeg implements FFmpegLike {
   progressListeners = new Set<ProgressListener>()
   loaded = false
   loads = 0
+  /** Chunks the next cold load reports, as a core download would. */
+  download: DownloadProgress[] = []
+  downloadListeners: (DownloadListener | undefined)[] = []
   private pending: ((reason: Error) => void)[] = []
 
   private handler: ExecHandler
@@ -49,9 +55,14 @@ class FakeFFmpeg implements FFmpegLike {
     this.logListeners.forEach((l) => l({ type: 'stderr', message }))
   }
 
-  async load() {
+  async load(onProgress?: DownloadListener) {
     this.record('load')
-    if (!this.loaded) this.loads++
+    this.downloadListeners.push(onProgress)
+    if (!this.loaded) {
+      this.loads++
+      this.download.forEach((chunk) => onProgress?.(chunk))
+      this.download = []
+    }
     this.loaded = true
   }
   async mount(file: File, mountPoint: string) {
@@ -186,25 +197,119 @@ describe('runJoin', () => {
     expect(methods.indexOf('deleteFile out.mp4')).toBeGreaterThan(read)
   })
 
-  it('emits progress weighted by segment duration', async () => {
+  it('emits progress weighted by expected time, with labels', async () => {
     const ffmpeg = new FakeFFmpeg((args, fake) => {
       if (!isConcat(args)) fake.emitProgress(args.at(-1) === 'seg0.mp4' ? 5_000_000 : 15_000_000)
       return 0
     })
     const events: JoinEvent[] = []
-    await runJoin({ ffmpeg, files, segments, mode: 'fast', onEvent: (e) => events.push(e) })
+    await runJoin({
+      ffmpeg,
+      files,
+      segments,
+      mode: 'fast',
+      outputName: 'game-highlights.mp4',
+      now: () => 0,
+      onEvent: (e) => events.push(e),
+    })
 
+    // Fast at 20x: cuts take 0.5 s and 1.5 s, the concat of 40 s at 40x takes 1 s.
     const summary = events
       .filter((e) => !e.log)
-      .map((e) => [e.phase, e.segmentIndex, Number(e.progress.toFixed(3))])
+      .map((e) => [e.phase, e.segmentIndex, Number(e.progress.toFixed(3)), e.label])
     expect(summary).toEqual([
-      ['segment', 0, 0],
-      ['segment', 0, 0.125],
-      ['segment', 1, 0.25],
-      ['segment', 1, 0.625],
-      ['concat', 1, 1],
-      ['done', 1, 1],
+      ['download', 0, 0, 'Loading ffmpeg'],
+      ['cut', 0, 0, 'Cutting clip 1 of 2'],
+      ['cut', 0, 0.083, 'Cutting clip 1 of 2'],
+      ['cut', 1, 0.167, 'Cutting clip 2 of 2'],
+      ['cut', 1, 0.417, 'Cutting clip 2 of 2'],
+      ['concat', 1, 0.667, 'Combining clips'],
+      ['save', 1, 0.999, 'Saving'],
+      ['done', 1, 1, 'Saved game-highlights.mp4'],
     ])
+    expect(events.slice(0, -1).every((e) => e.remainingSeconds === null)).toBe(true)
+    expect(events.at(-1)?.remainingSeconds).toBe(0)
+  })
+
+  it('forwards concat progress', async () => {
+    const ffmpeg = new FakeFFmpeg((args, fake) => {
+      if (isConcat(args)) fake.emitProgress(20_000_000)
+      return 0
+    })
+    const events: JoinEvent[] = []
+    await runJoin({
+      ffmpeg,
+      files,
+      segments,
+      mode: 'fast',
+      now: () => 0,
+      onEvent: (e) => events.push(e),
+    })
+    const concat = events.filter((e) => e.phase === 'concat').map((e) => e.progress)
+    expect(concat).toHaveLength(2)
+    expect(concat[1]).toBeCloseTo(2.5 / 3)
+  })
+
+  it('reports the core download with bytes in the label', async () => {
+    const ffmpeg = new FakeFFmpeg()
+    ffmpeg.download = [
+      { received: 0, total: 31.5e6 },
+      { received: 12.3e6, total: 31.5e6 },
+      { received: 31.5e6, total: 31.5e6 },
+    ]
+    const events: JoinEvent[] = []
+    await runJoin({
+      ffmpeg,
+      files,
+      segments,
+      mode: 'precise',
+      now: () => 0,
+      onEvent: (e) => events.push(e),
+    })
+    const download = events.filter((e) => e.phase === 'download')
+    expect(download.map((e) => e.label)).toEqual([
+      'Loading ffmpeg',
+      'Downloading ffmpeg · 0.0 of 31.5 MB',
+      'Downloading ffmpeg · 12.3 of 31.5 MB',
+      'Downloading ffmpeg · 31.5 of 31.5 MB',
+    ])
+    expect(download[2].progress).toBeGreaterThan(0)
+    expect(ffmpeg.downloadListeners[0]).toBeTypeOf('function')
+  })
+
+  it('never lowers progress except on a fallback, and stores learned rates', async () => {
+    let clock = 0
+    const store = new Map<string, string>()
+    const ffmpeg = new FakeFFmpeg((args, fake) => {
+      if (isConcat(args)) return 0
+      // 1 media second per wall second, reported every second.
+      const seg = args.at(-1) === 'seg0.mp4' ? segments[0] : segments[1]
+      for (let t = 1; t <= seg.end - seg.start; t++) {
+        clock += 1000
+        fake.emitProgress(t * 1_000_000)
+      }
+      return 0
+    })
+    const events: JoinEvent[] = []
+    await runJoin({
+      ffmpeg,
+      files,
+      segments,
+      mode: 'precise',
+      now: () => clock,
+      store: {
+        getItem: (key) => store.get(key) ?? null,
+        setItem: (key, value) => void store.set(key, value),
+        removeItem: (key) => void store.delete(key),
+        key: () => null,
+        length: 0,
+      },
+      onEvent: (e) => events.push(e),
+    })
+    const progress = events.map((e) => e.progress)
+    progress.forEach((p, i) => expect(p).toBeGreaterThanOrEqual(progress[i - 1] ?? 0))
+    expect(JSON.parse(store.get(RATES_KEY) ?? '{}').precise).toBeCloseTo(1)
+    expect(events.find((e) => e.remainingSeconds !== null)).toBeDefined()
   })
 
   it('forwards log lines and keeps them for errors', async () => {
@@ -255,7 +360,13 @@ describe('runJoin', () => {
     expect(events.find((e) => e.phase === 'fallback')).toMatchObject({
       mode: 'precise',
       log: FALLBACK_REASON,
+      label: 'Switched to Precise: re-encoding',
+      progress: 0,
     })
+    const afterFallback = events.slice(events.findIndex((e) => e.phase === 'fallback'))
+    expect(afterFallback.find((e) => e.phase === 'cut')?.label).toBe(
+      'Switched to Precise: re-encoding clip 1 of 2',
+    )
     expect(events.at(-1)).toMatchObject({ phase: 'done', mode: 'precise' })
     expect(ffmpeg.files.size).toBe(0)
   })

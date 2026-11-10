@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { DownloadProgress } from '../lib/join/runner'
 import {
   BrowserFFmpeg,
+  CoreDownloader,
   SINGLE_THREAD_FALLBACK_LOG,
   type CoreChoice,
   type CoreConfig,
@@ -50,7 +52,98 @@ const config = (multiThread: boolean): CoreConfig =>
     ? { coreURL: 'mt.js', wasmURL: 'mt.wasm', workerURL: 'mt.worker.js' }
     : { coreURL: 'st.js', wasmURL: 'st.wasm' }
 
-function setup(hangOnMultiThread: boolean, choice: CoreChoice = { singleThreadOnly: false }) {
+/** A response whose body arrives in `chunks`, with or without a Content-Length header. */
+function streamed(chunks: number[], withLength: boolean): Response {
+  const total = chunks.reduce((sum, n) => sum + n, 0)
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const size of chunks) controller.enqueue(new Uint8Array(size))
+      controller.close()
+    },
+  })
+  return new Response(body, {
+    headers: withLength ? { 'Content-Length': String(total) } : {},
+  })
+}
+
+function fakeServer(files: Record<string, number[]>, withLength = true) {
+  const fetched: string[] = []
+  const blobs = new Map<string, Blob>()
+  const downloader = new CoreDownloader({
+    fetch: async (url) => {
+      fetched.push(url)
+      return streamed(files[url], withLength)
+    },
+    createObjectURL: (blob) => {
+      const url = `blob:${blobs.size}`
+      blobs.set(url, blob)
+      return url
+    },
+  })
+  return { downloader, fetched, blobs }
+}
+
+const files = {
+  'st.js': [100],
+  'st.wasm': [400, 500],
+  'mt.js': [100],
+  'mt.wasm': [600, 600],
+  'mt.worker.js': [10],
+}
+
+describe('CoreDownloader', () => {
+  it('reports bytes per chunk against the Content-Length total and returns blob URLs', async () => {
+    const { downloader, blobs } = fakeServer(files)
+    const reports: [number, number | null][] = []
+    const urls = await downloader.download(config(false), (received, total) =>
+      reports.push([received, total]),
+    )
+    expect(reports[0]).toEqual([0, 1000])
+    expect(reports.at(-1)).toEqual([1000, 1000])
+    expect(reports.map(([received]) => received)).toEqual(
+      [...reports.map(([received]) => received)].sort((a, b) => a - b),
+    )
+    expect(reports).toHaveLength(4)
+    expect(Object.keys(urls)).toEqual(['coreURL', 'wasmURL'])
+    expect(blobs.get(urls.wasmURL)?.size).toBe(900)
+    expect(blobs.get(urls.wasmURL)?.type).toBe('application/wasm')
+    expect(blobs.get(urls.coreURL)?.type).toBe('text/javascript')
+  })
+
+  it('reports a null total when the server sends no Content-Length', async () => {
+    const { downloader } = fakeServer(files, false)
+    const reports: [number, number | null][] = []
+    await downloader.download(config(true), (received, total) => reports.push([received, total]))
+    expect(reports.every(([, total]) => total === null)).toBe(true)
+    expect(reports.at(-1)).toEqual([1310, null])
+  })
+
+  it('keeps blob URLs for the page, so a second load downloads nothing', async () => {
+    const { downloader, fetched } = fakeServer(files)
+    const first = await downloader.download(config(false))
+    const reports: number[] = []
+    const second = await downloader.download(config(false), (received) => reports.push(received))
+    expect(second).toEqual(first)
+    expect(fetched).toEqual(['st.js', 'st.wasm'])
+    expect(reports).toEqual([])
+  })
+
+  it('fails on an HTTP error', async () => {
+    const downloader = new CoreDownloader({
+      fetch: async () => new Response('missing', { status: 404 }),
+    })
+    await expect(downloader.download(config(false))).rejects.toThrow(/HTTP 404/)
+  })
+})
+
+function setup(
+  hangOnMultiThread: boolean,
+  choice: CoreChoice = { singleThreadOnly: false },
+  download?: (
+    config: CoreConfig,
+    onProgress?: (r: number, t: number | null) => void,
+  ) => Promise<CoreConfig>,
+) {
   const cores: FakeCore[] = []
   const adapter = new BrowserFFmpeg({
     createFFmpeg: () => {
@@ -62,6 +155,7 @@ function setup(hangOnMultiThread: boolean, choice: CoreChoice = { singleThreadOn
     coreConfig: config,
     timeoutMs: 8000,
     choice,
+    download: download ?? (async (urls) => urls),
   })
   const logs: string[] = []
   adapter.on('log', ({ message }: { message: string }) => logs.push(message))
@@ -122,5 +216,34 @@ describe('BrowserFFmpeg.load', () => {
     await loading
     cores[1].emit('ffmpeg version 5.1.4')
     expect(logs).toEqual([SINGLE_THREAD_FALLBACK_LOG, 'ffmpeg version 5.1.4'])
+  })
+
+  it('reports the download, then starts the core from blob URLs', async () => {
+    const { downloader } = fakeServer(files)
+    const { adapter, cores } = setup(false, undefined, (c, p) => downloader.download(c, p))
+    const reports: DownloadProgress[] = []
+    await adapter.load((progress) => reports.push(progress))
+    expect(reports.at(-1)).toEqual({ received: 1310, total: 1310 })
+    expect(cores[0].loads[0].wasmURL).toMatch(/^blob:/)
+
+    adapter.terminate()
+    reports.length = 0
+    await adapter.load((progress) => reports.push(progress))
+    expect(reports).toEqual([])
+  })
+
+  it('counts the single-thread files on top of the multi-thread ones after a timeout', async () => {
+    const { downloader, fetched } = fakeServer(files)
+    const { adapter, cores } = setup(true, undefined, (c, p) => downloader.download(c, p))
+    const reports: DownloadProgress[] = []
+    const loading = adapter.load((progress) => reports.push(progress))
+    await vi.advanceTimersByTimeAsync(8000)
+    await loading
+    expect(fetched).toEqual(['mt.js', 'mt.wasm', 'mt.worker.js', 'st.js', 'st.wasm'])
+    expect(reports.at(-1)).toEqual({ received: 2310, total: 2310 })
+    expect(reports.map((r) => r.received)).toEqual(
+      [...reports.map((r) => r.received)].sort((a, b) => a - b),
+    )
+    expect(cores[1].loads[0].coreURL).toMatch(/^blob:/)
   })
 })
