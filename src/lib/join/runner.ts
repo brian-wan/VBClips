@@ -115,12 +115,15 @@ export const FALLBACK_REASON =
 export class JoinError extends Error {
   readonly mode: JoinMode
   readonly log: string[]
+  /** The failure was inside a Fast cut, so trying Precise may help. */
+  readonly retryable: boolean
 
-  constructor(message: string, mode: JoinMode, log: string[]) {
+  constructor(message: string, mode: JoinMode, log: string[], retryable = false) {
     super(message)
     this.name = 'JoinError'
     this.mode = mode
     this.log = log
+    this.retryable = retryable
   }
 }
 
@@ -173,7 +176,10 @@ export async function runJoin({
     if (pending) cancelFlush()
     pending = false
   }
+  /** Set once runJoin settles: late download chunks or log lines must not revive the dialog. */
+  let finished = false
   const deliver = () => {
+    if (finished) return
     cancelPending()
     current = { ...current, ...view() }
     onEvent?.(current)
@@ -181,6 +187,7 @@ export async function runJoin({
   type Patch = Partial<Pick<JoinEvent, 'mode' | 'segmentIndex'>>
   /** Records the change and delivers it with the next frame, with any others before then. */
   const emit = (patch: Patch = {}) => {
+    if (finished) return
     current = { ...current, ...patch }
     if (pending) return
     pending = true
@@ -234,7 +241,7 @@ export async function runJoin({
     heardFromFFmpeg()
     log.push(message)
     if (log.length > LOG_LIMIT) log.shift()
-    onEvent?.({ ...current, log: message })
+    if (!finished) onEvent?.({ ...current, log: message })
   }
   const outputSeconds = totalDuration(segments)
   const onProgress: ProgressListener = ({ time }) => {
@@ -255,8 +262,13 @@ export async function runJoin({
   ffmpeg.on('progress', onProgress)
   const mounted: string[] = []
 
-  const fail = (message: string, failedMode: JoinMode) =>
-    new JoinError(message, failedMode, [...log])
+  const fail = (message: string, failedMode: JoinMode, retryable = false) =>
+    new JoinError(message, failedMode, [...log], retryable)
+  /** Only a failure inside a Fast cut or concat is worth retrying with Precise. */
+  const insideFastRender = () => {
+    const { stage } = model.view()
+    return current.mode === 'fast' && (stage === 'cut' || stage === 'concat')
+  }
 
   const removeAll = async (paths: string[]) => {
     for (const path of paths) await ffmpeg.deleteFile(path).catch(() => undefined)
@@ -276,7 +288,11 @@ export async function runJoin({
       const code = await ffmpeg.exec(segmentArgs(renderMode, seg, i, input))
       if (code !== 0) {
         await removeAll(segmentFiles.slice(0, i + 1))
-        throw fail(`ffmpeg could not cut segment ${i + 1} (exit code ${code}).`, renderMode)
+        throw fail(
+          `ffmpeg could not cut segment ${i + 1} (exit code ${code}).`,
+          renderMode,
+          renderMode === 'fast',
+        )
       }
     }
     await ffmpeg.writeFile(CONCAT_LIST, concatListContent(segments.length))
@@ -327,8 +343,10 @@ export async function runJoin({
     if (signal?.aborted) throw new JoinCancelled()
     if (stalled) throw fail(STALLED_MESSAGE, current.mode)
     if (error instanceof JoinError) throw error
-    throw fail(error instanceof Error ? error.message : String(error), current.mode)
+    const message = error instanceof Error ? error.message : String(error)
+    throw fail(message, current.mode, insideFastRender())
   } finally {
+    finished = true
     disarm()
     stopTicking()
     cancelPending()

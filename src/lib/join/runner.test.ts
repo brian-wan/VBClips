@@ -337,6 +337,8 @@ describe('runJoin', () => {
     const ffmpeg = new FakeFFmpeg((args) => (args.at(-1) === 'seg1.mp4' ? 1 : 0))
     const error = await run({ ffmpeg, files, segments, mode: 'fast' }).catch((e: unknown) => e)
     expect((error as JoinError).mode).toBe('fast')
+    // A Fast cut that fails is worth trying again with Precise.
+    expect((error as JoinError).retryable).toBe(true)
     expect(ffmpeg.execArgs()).toHaveLength(2)
     expect(ffmpeg.files.size).toBe(0)
   })
@@ -506,6 +508,8 @@ describe('runJoin', () => {
       const error = await outcome
       expect(error).toBeInstanceOf(JoinError)
       expect((error as JoinError).message).toBe(STALLED_MESSAGE)
+      // A dead worker is not fixed by re-encoding, even though it died in a Fast cut.
+      expect((error as JoinError).retryable).toBe(false)
       expect((error as JoinError).log).toEqual(['frame=  120'])
       expect(ffmpeg.methods()).toContain('terminate')
     } finally {
@@ -513,13 +517,44 @@ describe('runJoin', () => {
     }
   })
 
-  it('reports a core that never starts as a join error', async () => {
-    const ffmpeg = new FakeFFmpeg()
-    ffmpeg.downloading = Promise.reject(new Error('ffmpeg did not start'))
+  it.each(['ffmpeg did not start', 'The download stalled'])(
+    'reports "%s" in a Fast join as a join error that Precise would not fix',
+    async (message) => {
+      const ffmpeg = new FakeFFmpeg()
+      ffmpeg.downloading = Promise.reject(new Error(message))
+      const error = await run({ ffmpeg, files, segments, mode: 'fast' }).catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(JoinError)
+      expect((error as JoinError).message).toBe(message)
+      expect((error as JoinError).retryable).toBe(false)
+      expect(ffmpeg.methods()).not.toContain('mount')
+    },
+  )
+
+  it('does not offer Precise again for a Precise cut that fails', async () => {
+    const ffmpeg = new FakeFFmpeg((args) => (args.at(-1) === 'seg0.mp4' ? 1 : 0))
     const error = await run({ ffmpeg, files, segments, mode: 'precise' }).catch((e: unknown) => e)
+    expect((error as JoinError).retryable).toBe(false)
+  })
+
+  it('emits nothing for a download chunk or log line that arrives after the join failed', async () => {
+    const ffmpeg = new FakeFFmpeg()
+    ffmpeg.download = [{ received: 1e6, total: 32.8e6 }]
+    ffmpeg.downloading = Promise.reject(new Error('The download stalled'))
+    const events: JoinEvent[] = []
+    const error = await run({
+      ffmpeg,
+      files,
+      segments,
+      mode: 'fast',
+      onEvent: (e) => events.push(e),
+    }).catch((e: unknown) => e)
     expect(error).toBeInstanceOf(JoinError)
-    expect((error as JoinError).message).toBe('ffmpeg did not start')
-    expect(ffmpeg.methods()).not.toContain('mount')
+    const before = events.length
+    // A sibling reader that was still streaming reports one more chunk.
+    ffmpeg.downloadListeners[0]?.({ received: 2e6, total: 32.8e6 })
+    ffmpeg.emitLog('late line')
+    expect(events).toHaveLength(before)
+    expect(events.at(-1)?.label).toBe('Downloading ffmpeg · 1.0 of 32.8 MB')
   })
 
   it('does not start when already aborted', async () => {

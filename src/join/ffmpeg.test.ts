@@ -181,6 +181,54 @@ describe('CoreDownloader', () => {
     }
   })
 
+  it('cancels the other files and reports nothing more when one read stalls', async () => {
+    vi.useFakeTimers()
+    try {
+      let siblingCancelled = false
+      // st.js sends one chunk and then nothing; st.wasm keeps sending a chunk every second.
+      const stalled = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(10))
+        },
+      })
+      const streaming = new ReadableStream<Uint8Array>({
+        pull: (controller) =>
+          new Promise<void>((resolve) =>
+            setTimeout(() => {
+              if (!siblingCancelled) controller.enqueue(new Uint8Array(100))
+              resolve()
+            }, 1000),
+          ),
+        cancel() {
+          siblingCancelled = true
+        },
+      })
+      const bodies: Record<string, ReadableStream<Uint8Array>> = {
+        'st.js': stalled,
+        'st.wasm': streaming,
+      }
+      const downloader = new CoreDownloader({
+        fetch: (url) => Promise.resolve(new Response(bodies[url] ?? null)),
+        createObjectURL: () => 'blob:x',
+      })
+      const reports: number[] = []
+      const downloading = downloader.download(config(false), (received) => reports.push(received))
+      const outcome = downloading.catch((e: unknown) => e)
+      await vi.advanceTimersByTimeAsync(30_000)
+      const error = await outcome
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).message).toBe('The download stalled')
+      expect(siblingCancelled).toBe(true)
+
+      const atFailure = reports.length
+      expect(atFailure).toBeGreaterThan(2)
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(reports).toHaveLength(atFailure)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('fails on an HTTP error', async () => {
     const downloader = new CoreDownloader({
       fetch: () => Promise.resolve(new Response('missing', { status: 404 })),

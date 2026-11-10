@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type PointerEvent,
   type ReactNode,
 } from 'react'
@@ -73,6 +74,11 @@ export function Dialog({ title, onClose, children, width, closeLabel = 'Done' }:
   const onBackdropDown = (e: PointerEvent<HTMLDivElement>) => {
     pressedBackdrop.current = e.target === e.currentTarget
   }
+  // A press on the backdrop would otherwise focus <body>, and a dialog left open after it would
+  // lose Tab and Escape, which both live on the dialog.
+  const keepFocusInside = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) e.preventDefault()
+  }
   const onBackdropUp = (e: PointerEvent<HTMLDivElement>) => {
     const outside = pressedBackdrop.current && e.target === e.currentTarget
     pressedBackdrop.current = false
@@ -80,7 +86,12 @@ export function Dialog({ title, onClose, children, width, closeLabel = 'Done' }:
   }
 
   return (
-    <div className={styles.backdrop} onPointerDown={onBackdropDown} onPointerUp={onBackdropUp}>
+    <div
+      className={styles.backdrop}
+      onPointerDown={onBackdropDown}
+      onPointerUp={onBackdropUp}
+      onMouseDown={keepFocusInside}
+    >
       <section
         ref={dialogRef}
         className={styles.dialog}

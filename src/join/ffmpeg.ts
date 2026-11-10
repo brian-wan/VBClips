@@ -64,7 +64,8 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T | typeof TI
 
 /**
  * Reads a response body chunk by chunk, reporting each chunk's size. A read that brings nothing
- * for `stallMs` fails with "The download stalled".
+ * for `stallMs` fails with "The download stalled". Aborting `signal` cancels the reader at once,
+ * even mid-read, and no chunk is reported after that.
  */
 export async function readChunks(
   response: Response,
@@ -78,23 +79,30 @@ export async function readChunks(
     return [whole]
   }
   const reader = response.body.getReader()
+  const cancel = () => void reader.cancel().catch(() => undefined)
+  signal?.addEventListener('abort', cancel, { once: true })
   const chunks: Uint8Array<ArrayBuffer>[] = []
-  for (;;) {
-    if (signal?.aborted) {
-      await reader.cancel().catch(() => undefined)
-      signal.throwIfAborted()
+  try {
+    for (;;) {
+      if (signal?.aborted) {
+        cancel()
+        signal.throwIfAborted()
+      }
+      const reading = reader.read()
+      const outcome = await within(reading, stallMs)
+      if (outcome === TIMED_OUT) {
+        reading.catch(() => undefined)
+        cancel()
+        throw new Error('The download stalled')
+      }
+      signal?.throwIfAborted()
+      const { done, value } = outcome
+      if (done) return chunks
+      chunks.push(value)
+      onChunk(value.byteLength)
     }
-    const reading = reader.read()
-    const outcome = await within(reading, stallMs)
-    if (outcome === TIMED_OUT) {
-      reading.catch(() => undefined)
-      await reader.cancel().catch(() => undefined)
-      throw new Error('The download stalled')
-    }
-    const { done, value } = outcome
-    if (done) return chunks
-    chunks.push(value)
-    onChunk(value.byteLength)
+  } finally {
+    signal?.removeEventListener('abort', cancel)
   }
 }
 
@@ -126,7 +134,8 @@ export class CoreDownloader {
   /**
    * Ends with a report whose total equals the bytes received (0 of 0 when every file was cached),
    * so the caller knows the last byte is in even when the server sent no Content-Length.
-   * Aborting `signal` stops the fetches and the readers.
+   * Aborting `signal` stops the fetches and the readers. When one file fails or stalls, the
+   * others are cancelled too, and nothing is reported after the download has failed.
    */
   async download(
     config: CoreConfig,
@@ -141,32 +150,20 @@ export class CoreDownloader {
     let received = 0
     let total: number | null = 0
     if (missing.length > 0) {
-      const responses = await Promise.all(
-        missing.map(async (url) => {
-          const response = await this.fetch(url, { signal })
-          if (!response.ok) throw new Error(`Could not download ${url} (HTTP ${response.status})`)
-          return { url, response }
-        }),
-      )
-      const lengths = responses.map(({ response }) => contentLength(response))
-      total = lengths.every((n) => n !== null)
-        ? lengths.reduce<number>((sum, n) => sum + (n ?? 0), 0)
-        : null
-      onProgress?.(received, total)
-      await Promise.all(
-        responses.map(async ({ url, response }) => {
-          const chunks = await readChunks(
-            response,
-            (bytes) => {
-              received += bytes
-              onProgress?.(received, total)
-            },
-            signal,
-          )
-          const blob = new Blob(chunks, { type: mimeType(url) })
-          this.blobURLs.set(url, this.createObjectURL(blob))
-        }),
-      )
+      // Aborted by the join's signal, or by this download when any one file fails.
+      const batch = new AbortController()
+      const forward = () => batch.abort(signal?.reason)
+      signal?.addEventListener('abort', forward, { once: true })
+      try {
+        const done = await this.fetchAll(missing, onProgress, batch.signal)
+        received = done.received
+        total = done.total
+      } catch (error) {
+        batch.abort(error)
+        throw error
+      } finally {
+        signal?.removeEventListener('abort', forward)
+      }
     }
     if (missing.length === 0 || received !== total) onProgress?.(received, received)
     const blobURL = (url: string) => this.blobURLs.get(url) as string
@@ -175,6 +172,45 @@ export class CoreDownloader {
       wasmURL: blobURL(config.wasmURL),
       ...(config.workerURL ? { workerURL: blobURL(config.workerURL) } : {}),
     }
+  }
+
+  /** Fetches and reads `missing` side by side; `signal` stops all of them. */
+  private async fetchAll(
+    missing: readonly string[],
+    onProgress: BatchListener | undefined,
+    signal: AbortSignal,
+  ): Promise<{ received: number; total: number | null }> {
+    const responses = await Promise.all(
+      missing.map(async (url) => {
+        const response = await this.fetch(url, { signal })
+        if (!response.ok) throw new Error(`Could not download ${url} (HTTP ${response.status})`)
+        return { url, response }
+      }),
+    )
+    const lengths = responses.map(({ response }) => contentLength(response))
+    const total = lengths.every((n) => n !== null)
+      ? lengths.reduce<number>((sum, n) => sum + (n ?? 0), 0)
+      : null
+    let received = 0
+    const report = () => {
+      if (!signal.aborted) onProgress?.(received, total)
+    }
+    report()
+    await Promise.all(
+      responses.map(async ({ url, response }) => {
+        const chunks = await readChunks(
+          response,
+          (bytes) => {
+            received += bytes
+            report()
+          },
+          signal,
+        )
+        const blob = new Blob(chunks, { type: mimeType(url) })
+        this.blobURLs.set(url, this.createObjectURL(blob))
+      }),
+    )
+    return { received, total }
   }
 }
 

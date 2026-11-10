@@ -38,7 +38,8 @@ type Props = {
 }
 
 type Result = { url: string; name: string; size: number; fellBack: boolean }
-type Failure = { message: string; mode: JoinMode; log: string[] }
+/** `retryable`: the failure was inside a Fast cut, so "Try Precise" is offered. */
+type Failure = { message: string; mode: JoinMode; log: string[]; retryable: boolean }
 
 type State =
   | { kind: 'setup' }
@@ -181,8 +182,8 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
       }
       const failure =
         error instanceof JoinError
-          ? { message: error.message, mode: error.mode, log: error.log }
-          : { message: String(error), mode: joinMode, log: [] }
+          ? { message: error.message, mode: error.mode, log: error.log, retryable: error.retryable }
+          : { message: String(error), mode: joinMode, log: [], retryable: false }
       setState({ kind: 'error', failure })
     } finally {
       if (abortRef.current === controller) abortRef.current = null
@@ -315,7 +316,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
           <>
             <p className={styles.errorMessage} role="alert">
               {state.failure.message} Check the log below, then try again
-              {state.failure.mode === 'fast' ? ' or use Precise.' : '.'}
+              {state.failure.retryable ? ' or use Precise.' : '.'}
             </p>
             {state.failure.log.length > 0 && (
               <pre className={styles.log}>{state.failure.log.slice(-LOG_TAIL).join('\n')}</pre>
@@ -332,13 +333,13 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
               )}
               <button
                 type="button"
-                className={state.failure.mode === 'fast' ? ui.secondary : ui.primary}
+                className={state.failure.retryable ? ui.secondary : ui.primary}
                 onClick={() => setState({ kind: 'setup' })}
-                autoFocus={state.failure.mode !== 'fast'}
+                autoFocus={!state.failure.retryable}
               >
                 Back
               </button>
-              {state.failure.mode === 'fast' && (
+              {state.failure.retryable && (
                 <button
                   type="button"
                   className={ui.primary}
