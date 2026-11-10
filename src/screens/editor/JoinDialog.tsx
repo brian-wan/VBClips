@@ -10,6 +10,7 @@ import type { Clip } from '../../lib/clips'
 import {
   LARGE_OUTPUT_BYTES,
   MAX_OUTPUT_BYTES,
+  TOUCH_LARGE_OUTPUT_BYTES,
   estimateOutputBytes,
   estimateSeconds,
   formatEstimate,
@@ -29,6 +30,7 @@ import {
   type JoinEvent,
 } from '../../lib/join/runner'
 import { formatTime } from '../../lib/time'
+import { useCoarsePointer } from '../../hooks/useCoarsePointer'
 import { browserStore } from '../../storage'
 import styles from './JoinDialog.module.css'
 
@@ -100,6 +102,8 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
   )
   const tooLarge = estimatedBytes > MAX_OUTPUT_BYTES
   const large = !tooLarge && estimatedBytes >= LARGE_OUTPUT_BYTES
+  const coarse = useCoarsePointer()
+  const largeForPhone = coarse && !tooLarge && estimatedBytes > TOUCH_LARGE_OUTPUT_BYTES
   const name = outputFileName(sources[0]?.meta.name ?? 'video')
 
   const [mode, setMode] = useState<JoinMode>('fast')
@@ -236,7 +240,13 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
   const summary = `${clips.length} ${clipWord} · ${formatTime(total)} total · about ${formatBytes(estimatedBytes)}`
 
   return (
-    <Dialog title="Join clips" width={520} closeLabel="Close" onClose={requestClose}>
+    <Dialog
+      title="Join clips"
+      width={520}
+      closeLabel="Close"
+      fullScreenOnPhone
+      onClose={requestClose}
+    >
       <div className={styles.content}>
         <p className={styles.summary}>
           {summary}
@@ -244,6 +254,12 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
             <>
               <br />
               Large output: the browser may run out of memory. Precise mode makes a smaller file.
+            </>
+          )}
+          {largeForPhone && (
+            <>
+              <br />
+              On a phone, large joins can run out of memory. Fast mode and fewer clips help.
             </>
           )}
           {uncached && (

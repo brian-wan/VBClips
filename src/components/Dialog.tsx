@@ -16,6 +16,8 @@ type Props = {
   children: ReactNode
   width?: number
   closeLabel?: string
+  /** Fill the screen under 700px wide, with 44px buttons. */
+  fullScreenOnPhone?: boolean
 }
 
 const FOCUSABLE =
@@ -27,7 +29,14 @@ const FOCUSABLE =
  * close it gives focus back to whatever had it before. The editor's shortcuts are switched off by
  * the editor while a dialog is open.
  */
-export function Dialog({ title, onClose, children, width, closeLabel = 'Done' }: Props) {
+export function Dialog({
+  title,
+  onClose,
+  children,
+  width,
+  closeLabel = 'Done',
+  fullScreenOnPhone = false,
+}: Props) {
   const dialogRef = useRef<HTMLElement>(null)
   const doneRef = useRef<HTMLButtonElement>(null)
   const pressedBackdrop = useRef(false)
@@ -87,7 +96,7 @@ export function Dialog({ title, onClose, children, width, closeLabel = 'Done' }:
 
   return (
     <div
-      className={styles.backdrop}
+      className={`${styles.backdrop} ${fullScreenOnPhone ? styles.fullScreen : ''}`}
       onPointerDown={onBackdropDown}
       onPointerUp={onBackdropUp}
       onMouseDown={keepFocusInside}

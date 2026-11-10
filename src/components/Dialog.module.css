@@ -44,6 +44,37 @@
   font-size: var(--font-body);
 }
 
+/* Phones: the dialog takes the whole screen, inside the safe-area insets, with 44px buttons. */
+@media (max-width: 699px) {
+  .fullScreen {
+    place-items: stretch;
+    padding: 0;
+  }
+
+  .fullScreen .dialog {
+    width: 100%;
+    max-height: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .fullScreen .header {
+    padding: calc(12px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 12px
+      max(20px, env(safe-area-inset-left));
+  }
+
+  .fullScreen .body {
+    flex: 1;
+    padding: 20px max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom))
+      max(20px, env(safe-area-inset-left));
+  }
+
+  .fullScreen button {
+    height: 44px;
+  }
+}
+
 @keyframes fade {
   from {
     opacity: 0;
