@@ -662,7 +662,8 @@ accessibility items named here. Where this conflicts with earlier sections, this
   the join with `JoinError('ffmpeg stopped responding')` and terminates the worker when no `log`
   or `progress` event arrives for 120 s. Each `reader.read()` of the core download races a 30 s
   timer and fails with `JoinError('The download stalled')`. All three land in the existing error
-  state (log tail, Copy log, Try Precise where it applies). Unit tests with fake timers for each.
+  state (log tail, Copy log, Try Precise where it applies). "Try Precise" is offered only
+  for failures inside a Fast cut or concat, never for a download, start or stall failure. Unit tests with fake timers for each.
 - **Stop before the core starts.** `signal.throwIfAborted()` runs immediately before every
   `ffmpeg.load(...)`, and the library's `load(config, { signal })` form is used so an abort in the
   gap between the last byte and the LOAD message rejects the load.
@@ -705,7 +706,9 @@ accessibility items named here. Where this conflicts with earlier sections, this
   element. Focus: trap Tab inside the dialog, focus the primary action on open (Join N clips, or
   Done), and return focus to the opener on close.
 - **Backdrop close** fires only when both `pointerdown` and `pointerup` land on the backdrop, so
-  selecting log text and releasing outside does not close the dialog.
+  selecting log text and releasing outside does not close the dialog. A pointerdown on the
+  backdrop never moves focus out of the dialog (`preventDefault` on the backdrop's mousedown), so
+  Tab and Escape keep working after a press that did not close it.
 - **Frame cache eviction.** `ThumbnailStore.retain` drops frames of sources no longer retained,
   and the cache is capped at 2,000 frames, least recently requested evicted first.
 - **Playback error mid-session.** A `<video>` error after a source has loaded pauses and shows the
