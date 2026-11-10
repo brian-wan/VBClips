@@ -70,7 +70,8 @@ function fakeServer(files: Record<string, number[]>, withLength = true) {
   const fetched: string[] = []
   const blobs = new Map<string, Blob>()
   const downloader = new CoreDownloader({
-    fetch: async (url) => {
+    fetch: async (url, { signal }) => {
+      signal?.throwIfAborted()
       fetched.push(url)
       return streamed(files[url], withLength)
     },
@@ -114,18 +115,39 @@ describe('CoreDownloader', () => {
     const { downloader } = fakeServer(files, false)
     const reports: [number, number | null][] = []
     await downloader.download(config(true), (received, total) => reports.push([received, total]))
-    expect(reports.every(([, total]) => total === null)).toBe(true)
-    expect(reports.at(-1)).toEqual([1310, null])
+    expect(reports.slice(0, -1).every(([, total]) => total === null)).toBe(true)
+    expect(reports.at(-2)).toEqual([1310, null])
+    // The last report closes the download with a known total.
+    expect(reports.at(-1)).toEqual([1310, 1310])
   })
 
   it('keeps blob URLs for the page, so a second load downloads nothing', async () => {
     const { downloader, fetched } = fakeServer(files)
     const first = await downloader.download(config(false))
-    const reports: number[] = []
-    const second = await downloader.download(config(false), (received) => reports.push(received))
+    const reports: [number, number | null][] = []
+    const second = await downloader.download(config(false), (received, total) =>
+      reports.push([received, total]),
+    )
     expect(second).toEqual(first)
     expect(fetched).toEqual(['st.js', 'st.wasm'])
-    expect(reports).toEqual([])
+    expect(reports).toEqual([[0, 0]])
+  })
+
+  it('stops reading when the signal aborts and keeps nothing', async () => {
+    const { downloader, blobs } = fakeServer(files)
+    const controller = new AbortController()
+    const downloading = downloader.download(
+      config(false),
+      (received) => {
+        if (received > 0) controller.abort()
+      },
+      controller.signal,
+    )
+    await expect(downloading).rejects.toThrow(/abort/i)
+    expect(blobs.size).toBe(0)
+    await expect(downloader.download(config(false), undefined, controller.signal)).rejects.toThrow(
+      /abort/i,
+    )
   })
 
   it('fails on an HTTP error', async () => {
@@ -142,6 +164,7 @@ function setup(
   download?: (
     config: CoreConfig,
     onProgress?: (r: number, t: number | null) => void,
+    signal?: AbortSignal,
   ) => Promise<CoreConfig>,
 ) {
   const cores: FakeCore[] = []
@@ -229,7 +252,18 @@ describe('BrowserFFmpeg.load', () => {
     adapter.terminate()
     reports.length = 0
     await adapter.load((progress) => reports.push(progress))
-    expect(reports).toEqual([])
+    expect(reports).toEqual([{ received: 0, total: 0 }])
+  })
+
+  it('passes the abort signal to the download', async () => {
+    const signals: (AbortSignal | undefined)[] = []
+    const { adapter } = setup(false, undefined, async (urls, _, signal) => {
+      signals.push(signal)
+      return urls
+    })
+    const controller = new AbortController()
+    await adapter.load(undefined, controller.signal)
+    expect(signals).toEqual([controller.signal])
   })
 
   it('counts the single-thread files on top of the multi-thread ones after a timeout', async () => {

@@ -194,6 +194,19 @@ describe('JoinProgress learned rates', () => {
     expect(learned).toEqual([{ download: 20e6 }, { precise: 2 }])
   })
 
+  it('times the download from its first chunk to its last, not to the core start', () => {
+    const learned: Partial<Rates>[] = []
+    const progress = model({ onLearn: (rates) => learned.push(rates) })
+    progress.download(1e6, 31e6, 0)
+    progress.download(21e6, 31e6, 1000)
+    progress.download(31e6, 31e6, 1500)
+    progress.start(1500)
+    // The multi-thread core takes 8 s to give up; that is not download time.
+    progress.tick(5000)
+    progress.cut(0, 0, 9500)
+    expect(learned).toEqual([{ download: 20e6 }])
+  })
+
   it('learns nothing from a phase shorter than the warm-up', () => {
     const learned: Partial<Rates>[] = []
     const progress = model({ mode: 'fast', onLearn: (rates) => learned.push(rates) })
@@ -214,15 +227,20 @@ describe('JoinProgress remaining time', () => {
     })
     progress.cut(0, 0, 0)
     progress.cut(0, 0.05, 2500)
-    expect(progress.view().remainingSeconds).toBeNull()
+    expect(progress.snapshot().remainingSeconds).toBeNull()
     // Base sample at 2.5 s (5 s done); no rate measured yet, so the stored 1x applies.
     progress.cut(0, 0.1, 3000)
     // Measured 5 media s in 0.5 s is too short a sample; 90 s at 1x plus 2.5 s of concat.
-    expect(progress.view().remainingSeconds).toBeCloseTo(92.5)
+    expect(progress.snapshot().remainingSeconds).toBeCloseTo(92.5)
+    // Two model changes between shown updates step the average once.
+    progress.cut(0, 0.15, 3200)
     progress.cut(0, 0.2, 3500)
     // 15 s in 1 s: 80 s at 15x plus 2.5 s of concat is 7.83 s.
     const raw = 80 / 15 + 2.5
-    expect(progress.view().remainingSeconds).toBeCloseTo(92.5 + 0.3 * (raw - 92.5))
+    const once = 92.5 + 0.3 * (raw - 92.5)
+    expect(progress.snapshot().remainingSeconds).toBeCloseTo(once)
+    expect(progress.view().remainingSeconds).toBeCloseTo(once)
+    expect(progress.snapshot().remainingSeconds).toBeCloseTo(once + 0.3 * (raw - once))
   })
 })
 
@@ -233,7 +251,13 @@ describe('labels', () => {
     })
     expect(progress.view().label).toBe('Loading ffmpeg')
     progress.download(12.3e6, 31.5e6, 0)
-    expect(progress.view().label).toBe('Downloading ffmpeg · 12.3 of 31.5 MB')
+    expect(progress.view()).toMatchObject({
+      stage: 'download',
+      label: 'Downloading ffmpeg · 12.3 of 31.5 MB',
+    })
+    progress.download(31.5e6, 31.5e6, 0)
+    progress.start(0)
+    expect(progress.view()).toMatchObject({ stage: 'start', label: 'Starting ffmpeg' })
     progress.cut(2, 0, 0)
     expect(progress.view()).toMatchObject({ stage: 'cut', label: 'Cutting clip 3 of 12' })
     progress.concat(0, 0)

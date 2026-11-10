@@ -64,7 +64,7 @@ export function saveRates(store: KeyValueStore | null, learned: Partial<Rates>):
   }
 }
 
-export type JoinStage = 'download' | 'cut' | 'concat' | 'save' | 'done'
+export type JoinStage = 'download' | 'start' | 'cut' | 'concat' | 'save' | 'done'
 
 /** `key` null means the fixed save rate. */
 type Entry = { stage: JoinStage; work: number; done: number; key: RateKey | null }
@@ -110,6 +110,7 @@ export function percentOf(progress: number): number {
 }
 
 export const LOADING_LABEL = 'Loading ffmpeg'
+export const STARTING_LABEL = 'Starting ffmpeg'
 export const FALLBACK_LABEL = 'Switched to Precise: re-encoding'
 
 /**
@@ -128,9 +129,14 @@ export class JoinProgress {
   private current = 0
   private shown = 0
   private smoothed: number | null = null
+  /** Unsmoothed expected seconds left as of the last update. */
+  private raw = 0
+  private lastUpdate = 0
   private label = LOADING_LABEL
   private fellBack = false
   private finished = false
+  /** Between the last downloaded byte and the core answering. */
+  private starting = false
 
   constructor({ segments, mode, outputBytes, rates, startedAt, onLearn }: JoinProgressOptions) {
     this.rates = { ...rates }
@@ -156,8 +162,21 @@ export class JoinProgress {
     const entry = this.entries[0]
     entry.work = total ?? Math.max(ASSUMED_DOWNLOAD_BYTES, received)
     entry.done = Math.min(received, entry.work)
+    this.starting = false
     this.label = downloadLabel(received, total)
     this.measure('download', now)
+    this.update(now)
+  }
+
+  /** The download is complete and the core is starting; it has no work of its own. */
+  start(now: number): void {
+    this.starting = true
+    this.label = STARTING_LABEL
+    this.update(now)
+  }
+
+  /** Time passes with no new work, e.g. while the core starts: keeps the estimate current. */
+  tick(now: number): void {
     this.update(now)
   }
 
@@ -216,9 +235,21 @@ export class JoinProgress {
     this.update(now)
   }
 
+  /**
+   * The view for one shown update: steps the remaining-time average once. Call it once per
+   * rendered update, not per model change, so the smoothing is per update the user sees.
+   */
+  snapshot(): ProgressView {
+    if (!this.finished && this.lastUpdate - this.startedAt >= ESTIMATE_AFTER_MS) {
+      this.smoothed =
+        this.smoothed === null ? this.raw : this.smoothed + SMOOTHING * (this.raw - this.smoothed)
+    }
+    return this.view()
+  }
+
   view(): ProgressView {
     return {
-      stage: this.finished ? 'done' : this.stageAt(this.current),
+      stage: this.finished ? 'done' : this.starting ? 'start' : this.stageAt(this.current),
       progress: this.shown,
       remainingSeconds: this.smoothed,
       label: this.label,
@@ -238,10 +269,12 @@ export class JoinProgress {
   /** Moves to entry `position`, completing the ones before it. */
   private enter(position: number, now: number): void {
     if (position <= this.current) return
+    this.starting = false
     for (let i = this.current; i < position && i < this.entries.length; i++) {
       const entry = this.entries[i]
       entry.done = entry.work
-      if (entry.key) this.measure(entry.key, now)
+      // The download's last sample is its last chunk; core start time is not download time.
+      if (entry.key && entry.key !== 'download') this.measure(entry.key, now)
       const next = this.entries[i + 1]
       if (entry.key && entry.key !== next?.key) this.learn(entry.key)
     }
@@ -301,9 +334,8 @@ export class JoinProgress {
     const done = this.entries.reduce((sum, e) => sum + this.expected(e, 'done'), 0)
     const fraction = total > 0 ? Math.min(done / total, BEFORE_DONE) : 0
     this.shown = Math.max(this.shown, fraction)
-    if (now - this.startedAt < ESTIMATE_AFTER_MS) return
-    const raw = Math.max(total - done, 0)
-    this.smoothed = this.smoothed === null ? raw : this.smoothed + SMOOTHING * (raw - this.smoothed)
+    this.raw = Math.max(total - done, 0)
+    this.lastUpdate = now
   }
 }
 

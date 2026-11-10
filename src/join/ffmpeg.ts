@@ -51,6 +51,7 @@ export function contentLength(response: Response): number | null {
 export async function readChunks(
   response: Response,
   onChunk: (bytes: number) => void,
+  signal?: AbortSignal,
 ): Promise<Uint8Array<ArrayBuffer>[]> {
   if (!response.body) {
     const whole = new Uint8Array(await response.arrayBuffer())
@@ -60,6 +61,10 @@ export async function readChunks(
   const reader = response.body.getReader()
   const chunks: Uint8Array<ArrayBuffer>[] = []
   for (;;) {
+    if (signal?.aborted) {
+      await reader.cancel().catch(() => undefined)
+      signal.throwIfAborted()
+    }
     const { done, value } = await reader.read()
     if (done) return chunks
     chunks.push(value as Uint8Array<ArrayBuffer>)
@@ -70,7 +75,7 @@ export async function readChunks(
 const mimeType = (url: string) => (/\.wasm$/.test(url) ? 'application/wasm' : 'text/javascript')
 
 export type CoreDownloaderOptions = {
-  fetch?: (url: string) => Promise<Response>
+  fetch?: (url: string, init: { signal?: AbortSignal }) => Promise<Response>
   createObjectURL?: (blob: Blob) => string
 }
 
@@ -80,45 +85,61 @@ export type CoreDownloaderOptions = {
  * file it already has) download nothing.
  */
 export class CoreDownloader {
-  private readonly fetch: (url: string) => Promise<Response>
+  private readonly fetch: (url: string, init: { signal?: AbortSignal }) => Promise<Response>
   private readonly createObjectURL: (blob: Blob) => string
   private readonly blobURLs = new Map<string, string>()
 
   constructor(options: CoreDownloaderOptions = {}) {
-    this.fetch = options.fetch ?? ((url) => fetch(url))
+    this.fetch = options.fetch ?? ((url, init) => fetch(url, init))
     this.createObjectURL = options.createObjectURL ?? ((blob) => URL.createObjectURL(blob))
   }
 
-  async download(config: CoreConfig, onProgress?: BatchListener): Promise<CoreConfig> {
+  /**
+   * Ends with a report whose total equals the bytes received (0 of 0 when every file was cached),
+   * so the caller knows the last byte is in even when the server sent no Content-Length.
+   * Aborting `signal` stops the fetches and the readers.
+   */
+  async download(
+    config: CoreConfig,
+    onProgress?: BatchListener,
+    signal?: AbortSignal,
+  ): Promise<CoreConfig> {
     const urls = [config.coreURL, config.wasmURL, config.workerURL].filter(
       (url): url is string => url !== undefined,
     )
+    signal?.throwIfAborted()
     const missing = urls.filter((url) => !this.blobURLs.has(url))
+    let received = 0
+    let total: number | null = 0
     if (missing.length > 0) {
       const responses = await Promise.all(
         missing.map(async (url) => {
-          const response = await this.fetch(url)
+          const response = await this.fetch(url, { signal })
           if (!response.ok) throw new Error(`Could not download ${url} (HTTP ${response.status})`)
           return response
         }),
       )
       const lengths = responses.map(contentLength)
-      const total = lengths.every((n) => n !== null)
+      total = lengths.every((n) => n !== null)
         ? lengths.reduce<number>((sum, n) => sum + (n ?? 0), 0)
         : null
-      let received = 0
       onProgress?.(received, total)
       await Promise.all(
         responses.map(async (response, i) => {
-          const chunks = await readChunks(response, (bytes) => {
-            received += bytes
-            onProgress?.(received, total)
-          })
+          const chunks = await readChunks(
+            response,
+            (bytes) => {
+              received += bytes
+              onProgress?.(received, total)
+            },
+            signal,
+          )
           const blob = new Blob(chunks, { type: mimeType(missing[i]) })
           this.blobURLs.set(missing[i], this.createObjectURL(blob))
         }),
       )
     }
+    if (missing.length === 0 || received !== total) onProgress?.(received, received)
     const blobURL = (url: string) => this.blobURLs.get(url) as string
     return {
       coreURL: blobURL(config.coreURL),
@@ -157,7 +178,11 @@ export type BrowserFFmpegOptions = {
   timeoutMs?: number
   choice?: CoreChoice
   /** Turns the core's asset URLs into blob URLs, reporting download progress. */
-  download?: (config: CoreConfig, onProgress?: BatchListener) => Promise<CoreConfig>
+  download?: (
+    config: CoreConfig,
+    onProgress?: BatchListener,
+    signal?: AbortSignal,
+  ) => Promise<CoreConfig>
 }
 
 const TIMED_OUT = Symbol('timed out')
@@ -175,6 +200,7 @@ export class BrowserFFmpeg implements FFmpegLike {
   private readonly downloadCore: (
     config: CoreConfig,
     onProgress?: BatchListener,
+    signal?: AbortSignal,
   ) => Promise<CoreConfig>
   private readonly logListeners = new Set<LogListener>()
   private readonly progressListeners = new Set<ProgressListener>()
@@ -187,7 +213,8 @@ export class BrowserFFmpeg implements FFmpegLike {
     this.timeoutMs = options.timeoutMs ?? MULTI_THREAD_TIMEOUT_MS
     this.choice = options.choice ?? pageCoreChoice
     this.downloadCore =
-      options.download ?? ((config, onProgress) => pageDownloader.download(config, onProgress))
+      options.download ??
+      ((config, onProgress, signal) => pageDownloader.download(config, onProgress, signal))
     this.ffmpeg = this.freshFFmpeg()
   }
 
@@ -206,19 +233,23 @@ export class BrowserFFmpeg implements FFmpegLike {
    * Downloads the core (once per page) and starts it. The 8 s limit applies to starting the
    * multi-thread core, not to the download before it, which is bound by the network.
    */
-  async load(onProgress?: DownloadListener) {
+  async load(onProgress?: DownloadListener, signal?: AbortSignal) {
     if (this.ffmpeg.loaded) return
     // A fallback downloads a second set of files; report both batches as one download.
     let sofar: DownloadProgress = { received: 0, total: 0 }
     const fetchCore = (multiThread: boolean) => {
       const before = sofar
-      return this.downloadCore(this.coreConfig(multiThread), (received, total) => {
-        sofar = {
-          received: before.received + received,
-          total: before.total === null || total === null ? null : before.total + total,
-        }
-        onProgress?.(sofar)
-      })
+      return this.downloadCore(
+        this.coreConfig(multiThread),
+        (received, total) => {
+          sofar = {
+            received: before.received + received,
+            total: before.total === null || total === null ? null : before.total + total,
+          }
+          onProgress?.(sofar)
+        },
+        signal,
+      )
     }
 
     if (this.choice.singleThreadOnly || !this.multiThread()) {

@@ -92,6 +92,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
   const [confirmingStop, setConfirmingStop] = useState<'stop' | 'close' | null>(null)
   const [copied, setCopied] = useState(false)
   const [now, setNow] = useState(() => performance.now())
+  const [preciseRate] = useState(() => loadRates(browserStore()).precise)
 
   const abortRef = useRef<AbortController | null>(null)
   const resultUrl = useRef<string | null>(null)
@@ -137,7 +138,8 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
     })
 
     const onEvent = (event: JoinEvent) => {
-      if (event.log && event.phase === 'download') loadingLog = event.log
+      const loading = event.phase === 'download' || event.phase === 'start'
+      if (event.log && loading) loadingLog = event.log
       else if (event.log && event.phase !== 'fallback') return
       if (event.phase === 'fallback') fellBack = true
       setState({ kind: 'running', event, fellBack, startedAt, loadingLog })
@@ -155,6 +157,11 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
         onEvent,
         signal: controller.signal,
       })
+      // Stopped or closed as the join finished: no file, no object URL to leak.
+      if (controller.signal.aborted) {
+        setState({ kind: 'setup' })
+        return
+      }
       if (resultUrl.current) URL.revokeObjectURL(resultUrl.current)
       const url = URL.createObjectURL(blob)
       resultUrl.current = url
@@ -196,9 +203,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
     }
   }
 
-  const preciseEstimate = formatEstimate(
-    estimateSeconds('precise', segments, loadRates(browserStore()).precise),
-  )
+  const preciseEstimate = formatEstimate(estimateSeconds('precise', segments, preciseRate))
   const clipWord = clips.length === 1 ? 'clip' : 'clips'
   const summary = `${clips.length} ${clipWord} · ${formatTime(total)} total · about ${formatBytes(estimatedBytes)}`
 
@@ -381,7 +386,7 @@ function Progress({
           <span className={styles.muted}>{formatTime(elapsed)} elapsed</span>
           <span className={styles.muted}>{remainingLabel(event.remainingSeconds)}</span>
         </div>
-        {event.phase === 'download' && loadingLog && (
+        {(event.phase === 'download' || event.phase === 'start') && loadingLog && (
           <span className={styles.loadingLog}>{loadingLog}</span>
         )}
       </div>

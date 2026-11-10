@@ -14,6 +14,22 @@ import {
 import type { KeyValueStore } from '../persistence'
 import { FALLBACK_LABEL, JoinProgress, loadRates, saveRates, type Rates } from './progress'
 
+/** Runs `flush` later and returns a function that cancels it. */
+export type Scheduler = (flush: () => void) => () => void
+
+/** One flush per animation frame in a page; a 16 ms timer elsewhere. */
+export const nextFrame: Scheduler = (flush) => {
+  if (typeof document !== 'undefined' && typeof requestAnimationFrame === 'function') {
+    const id = requestAnimationFrame(flush)
+    return () => cancelAnimationFrame(id)
+  }
+  const id = setTimeout(flush, 16)
+  return () => clearTimeout(id)
+}
+
+/** How often the estimate is refreshed while the core starts and reports nothing. */
+const START_TICK_MS = 250
+
 export type LogListener = (event: { type: string; message: string }) => void
 export type ProgressListener = (event: { progress: number; time: number }) => void
 /** Core download so far; `total` is null when the server sends no Content-Length. */
@@ -24,9 +40,10 @@ export type DownloadListener = (progress: DownloadProgress) => void
 export interface FFmpegLike {
   /**
    * Loads the core if it is not loaded already (again after `terminate`), downloading it first
-   * when this page has not yet; `onProgress` hears about every downloaded chunk.
+   * when this page has not yet; `onProgress` hears about every downloaded chunk and ends with a
+   * report whose total equals the bytes received. Aborting `signal` stops the download.
    */
-  load(onProgress?: DownloadListener): Promise<void>
+  load(onProgress?: DownloadListener, signal?: AbortSignal): Promise<void>
   /** Mounts `file` read-only with WORKERFS at `mountPoint`, readable as `<mountPoint>/<name>`. */
   mount(file: File, mountPoint: string): Promise<void>
   unmount(mountPoint: string): Promise<void>
@@ -42,7 +59,7 @@ export interface FFmpegLike {
   terminate(): void
 }
 
-export type JoinPhase = 'download' | 'cut' | 'concat' | 'save' | 'fallback' | 'done'
+export type JoinPhase = 'download' | 'start' | 'cut' | 'concat' | 'save' | 'fallback' | 'done'
 
 export type JoinEvent = {
   phase: JoinPhase
@@ -71,6 +88,8 @@ export type JoinOptions = {
   /** Starting rates; defaults to the stored ones. */
   rates?: Rates
   now?: () => number
+  /** Coalesces progress events; defaults to one per animation frame. */
+  schedule?: Scheduler
   onEvent?: (event: JoinEvent) => void
   signal?: AbortSignal
 }
@@ -113,6 +132,7 @@ export async function runJoin({
   store = null,
   rates,
   now = () => performance.now(),
+  schedule = nextFrame,
   onEvent,
   signal,
   ffmpeg,
@@ -130,13 +150,55 @@ export async function runJoin({
     onLearn: (learned) => saveRates(store, learned),
   })
   const view = () => {
-    const { progress, remainingSeconds, label } = model.view()
+    const { progress, remainingSeconds, label } = model.snapshot()
     return { progress, remainingSeconds, label }
   }
   let current: JoinEvent = { phase: 'download', mode, segmentIndex: 0, ...view() }
-  const emit = (patch: Partial<JoinEvent>) => {
-    current = { ...current, ...view(), ...patch }
+  let pending = false
+  let cancelFlush = () => undefined as void
+  const cancelPending = () => {
+    if (pending) cancelFlush()
+    pending = false
+  }
+  const deliver = () => {
+    cancelPending()
+    current = { ...current, ...view() }
     onEvent?.(current)
+  }
+  /** Records the change and delivers it with the next frame, with any others before then. */
+  const emit = (patch: Partial<JoinEvent>) => {
+    current = { ...current, ...patch }
+    if (pending) return
+    pending = true
+    cancelFlush = schedule(() => {
+      pending = false
+      deliver()
+    })
+  }
+  /** Delivers at once: the first event, a fallback (it carries a log line) and done. */
+  const emitNow = (patch: Partial<JoinEvent>) => {
+    current = { ...current, ...patch }
+    deliver()
+  }
+
+  let startTicker: ReturnType<typeof setInterval> | undefined
+  const stopTicking = () => {
+    clearInterval(startTicker)
+    startTicker = undefined
+  }
+  const onDownload = ({ received, total }: DownloadProgress) => {
+    model.download(received, total, now())
+    if (total === null || received < total) {
+      stopTicking()
+      emit({ phase: 'download' })
+      return
+    }
+    model.start(now())
+    emit({ phase: 'start' })
+    startTicker ??= setInterval(() => {
+      model.tick(now())
+      emit({})
+    }, START_TICK_MS)
   }
 
   const onLog: LogListener = ({ message }) => {
@@ -200,11 +262,11 @@ export async function runJoin({
   }
 
   try {
-    onEvent?.(current)
-    await ffmpeg.load(({ received, total }) => {
-      model.download(received, total, now())
-      emit({})
-    })
+    emitNow({})
+    await ffmpeg.load(onDownload, signal)
+    stopTicking()
+    // The download runs in the page, where terminate() cannot reach it.
+    if (signal?.aborted) throw new JoinCancelled()
     for (let i = 0; i < files.length; i++) {
       await ffmpeg.mount(files[i], mountPoint(i))
       mounted.push(mountPoint(i))
@@ -212,7 +274,7 @@ export async function runJoin({
 
     if (!(await render(mode))) {
       model.fallback(now())
-      emit({
+      emitNow({
         phase: 'fallback',
         mode: 'precise',
         segmentIndex: 0,
@@ -228,13 +290,15 @@ export async function runJoin({
     await removeAll([OUTPUT])
     const blob = new Blob([data as Uint8Array<ArrayBuffer>], { type: 'video/mp4' })
     model.finish(outputName, now())
-    emit({ phase: 'done' })
+    emitNow({ phase: 'done' })
     return blob
   } catch (error) {
     if (signal?.aborted) throw new JoinCancelled()
     if (error instanceof JoinError) throw error
     throw fail(error instanceof Error ? error.message : String(error), current.mode)
   } finally {
+    stopTicking()
+    cancelPending()
     signal?.removeEventListener('abort', onAbort)
     ffmpeg.off('log', onLog)
     ffmpeg.off('progress', onProgress)
