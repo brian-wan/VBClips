@@ -188,6 +188,14 @@
   }
 }
 
+/* Short landscape screens: less padding, so the taller touch controls still fit without scrolling. */
+@media (max-height: 499px) {
+  .page {
+    padding-top: max(16px, env(safe-area-inset-top));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}
+
 /* Phones and touch: 44px tall controls. Doubled selectors outrank the shared button sizes. */
 @media (max-width: 699px), (pointer: coarse) {
   .page .chooseButton,
