@@ -12,7 +12,7 @@ export type RateKey = keyof Rates
 export const DEFAULT_RATES: Rates = { ...DEFAULT_RATE, concat: 40, download: 5e6 }
 export const RATES_KEY = 'vbclipper:join-rates'
 /** Reading the output out of MEMFS into a Blob. Never learned. */
-export const SAVE_BYTES_PER_SECOND = 200e6
+const SAVE_BYTES_PER_SECOND = 200e6
 /** Download work when the server sends no Content-Length. */
 export const ASSUMED_DOWNLOAD_BYTES = 31e6
 
@@ -110,7 +110,7 @@ export function percentOf(progress: number): number {
 }
 
 export const LOADING_LABEL = 'Loading ffmpeg'
-export const STARTING_LABEL = 'Starting ffmpeg'
+const STARTING_LABEL = 'Starting ffmpeg'
 export const FALLBACK_LABEL = 'Switched to Precise: re-encoding'
 
 /**

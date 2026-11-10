@@ -103,7 +103,7 @@ export type JoinOptions = {
   signal?: AbortSignal
 }
 
-export const OUTPUT = 'out.mp4'
+const OUTPUT = 'out.mp4'
 const LOG_LIMIT = 200
 
 export const STALLED_MESSAGE =

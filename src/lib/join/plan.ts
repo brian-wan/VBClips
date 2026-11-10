@@ -46,7 +46,7 @@ const timeArg = (seconds: number) => seconds.toFixed(3)
  * running, so default thread counts (about one per core for the decoder and 1.5 per core for
  * libx264) deadlock on machines with many cores. Cap both for re-encodes.
  */
-export const PRECISE_THREADS = '4'
+const PRECISE_THREADS = '4'
 
 export function segmentArgs(mode: JoinMode, seg: Span, index: number, input: string): string[] {
   const cut = ['-ss', timeArg(seg.start), '-to', timeArg(seg.end), '-i', input]

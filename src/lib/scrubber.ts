@@ -9,9 +9,9 @@ import {
 } from './clips'
 
 /** Pointer distance in px from a selected clip's edge that still grabs its trim handle. */
-export const HANDLE_HIT_PX = 8
+const HANDLE_HIT_PX = 8
 /** Pointer distance in px from the playhead that grabs it for scrubbing. */
-export const PLAYHEAD_HIT_PX = 6
+const PLAYHEAD_HIT_PX = 6
 /** Extra px around very short clip segments so they stay clickable. */
 const CLIP_HIT_SLOP_PX = 2
 

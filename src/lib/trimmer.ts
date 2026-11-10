@@ -2,13 +2,13 @@ import { clamp, type Span } from './clips'
 import type { TrimEdge } from './scrubber'
 
 /** Seconds of context shown on each side of the clip, at least. */
-export const MIN_PAD = 2
+const MIN_PAD = 2
 /** A handle closer than this share of the window to its edge recenters the window on drop. */
-export const RECENTER_SHARE = 0.1
+const RECENTER_SHARE = 0.1
 /** Width of each orange handle; the handles sit just outside the clip region. */
-export const TRIM_HANDLE_PX = 8
+const TRIM_HANDLE_PX = 8
 /** Pointer distance from a handle's centre that still grabs it. */
-export const TRIM_HIT_PX = 12
+const TRIM_HIT_PX = 12
 
 /** The stretch of the source the trim strip shows: the clip with padding, inside the source. */
 export function trimWindow(clip: Span, duration: number): Span {

@@ -12,7 +12,7 @@ import type {
   ProgressListener,
 } from '../lib/join/runner'
 
-export const MULTI_THREAD_TIMEOUT_MS = 8000
+const MULTI_THREAD_TIMEOUT_MS = 8000
 /** The single-thread core normally starts in well under a second. */
 const SINGLE_THREAD_TIMEOUT_MS = 30_000
 /** One read of the core download that brings nothing for this long fails the join. */
@@ -21,7 +21,7 @@ export const SINGLE_THREAD_FALLBACK_LOG =
   'Multi-thread core did not start; using the single-thread core'
 
 /** The multi-thread core needs SharedArrayBuffer, which only a cross-origin isolated page has. */
-export function usesMultiThreadCore(): boolean {
+function usesMultiThreadCore(): boolean {
   return typeof window !== 'undefined' && window.crossOriginIsolated
 }
 
@@ -44,7 +44,7 @@ function browserCoreConfig(multiThread: boolean): CoreConfig {
 type BatchListener = (received: number, total: number | null) => void
 
 /** Length of the bytes the reader will see; unknown when the body is compressed in transit. */
-export function contentLength(response: Response): number | null {
+function contentLength(response: Response): number | null {
   const encoding = response.headers.get('Content-Encoding')
   if (encoding && encoding !== 'identity') return null
   const length = Number(response.headers.get('Content-Length'))
