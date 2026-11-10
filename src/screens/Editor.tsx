@@ -15,7 +15,7 @@ import { Tip } from '../components/Tip'
 import ui from '../components/ui.module.css'
 import { useEditorShortcuts } from '../hooks/useEditorShortcuts'
 import { useSessionPersistence } from '../hooks/useSessionPersistence'
-import { useToasts } from '../hooks/useToasts'
+import { useToasts, type Toast } from '../hooks/useToasts'
 import { useVideoPlayer } from '../hooks/useVideoPlayer'
 import { findOverlappingIds, totalClippedDuration, type Clip } from '../lib/clips'
 import { fingerprint } from '../lib/fingerprint'
@@ -48,6 +48,8 @@ type Props = EditorInput & {
   onError: (message: string) => void
   /** Hands the app this editor's save, so the browser's Back can save before leaving. */
   registerSave: (save: (() => void) | null) => void
+  /** The app-wide "A new version is ready" toast, shown with this editor's own toasts. */
+  updateToast: Toast | null
 }
 
 type Flash = { id: number; playing: boolean }
@@ -61,6 +63,7 @@ export function Editor({
   onExit,
   onError,
   registerSave,
+  updateToast,
 }: Props) {
   const [state, dispatch] = useReducer(sessionReducer, initialSession, (s) =>
     sessionReducer(s, {
@@ -496,7 +499,10 @@ export function Editor({
                 </div>
               )}
             </div>
-            <Toasts toasts={toasts} onDismiss={dismissToast} />
+            <Toasts
+              toasts={updateToast ? [...toasts, updateToast] : toasts}
+              onDismiss={dismissToast}
+            />
           </div>
 
           <Timeline

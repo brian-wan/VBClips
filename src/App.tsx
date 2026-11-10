@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { Toasts } from './components/Toasts'
+import { useUpdateToast } from './hooks/useUpdateToast'
 import type { Clip } from './lib/clips'
 import { routeOf, routeReducer, type AppState, type Route } from './lib/route'
 import type { SourceMeta } from './lib/session'
@@ -70,12 +72,25 @@ export default function App() {
     saveEditor.current = save
   }, [])
 
+  const updateToast = useUpdateToast(() => saveEditor.current?.())
+
   if (route === '/edit' && input) {
     return (
       <ErrorBoundary onHome={exit}>
-        <Editor {...input} onExit={exit} onError={fail} registerSave={registerSave} />
+        <Editor
+          {...input}
+          onExit={exit}
+          onError={fail}
+          registerSave={registerSave}
+          updateToast={updateToast}
+        />
       </ErrorBoundary>
     )
   }
-  return <Home onOpen={open} error={error} onError={setError} />
+  return (
+    <>
+      <Home onOpen={open} error={error} onError={setError} />
+      <Toasts toasts={updateToast ? [updateToast] : []} onDismiss={() => {}} />
+    </>
+  )
 }

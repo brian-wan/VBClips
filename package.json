@@ -16,7 +16,8 @@
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "icons": "node scripts/render-icons.ts"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",
@@ -40,6 +41,7 @@
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.1",
     "vite": "^8.3.6",
+    "vite-plugin-pwa": "^2.0.0",
     "vitest": "^5.1.0"
   }
 }
