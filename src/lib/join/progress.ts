@@ -1,5 +1,5 @@
 import type { KeyValueStore } from '../persistence'
-import type { Span } from '../clips'
+import { clamp, type Span } from '../clips'
 import { DEFAULT_RATE, type JoinMode } from './plan'
 
 /**
@@ -106,7 +106,7 @@ export function remainingLabel(seconds: number | null): string {
 
 /** What the dialog prints next to the bar. */
 export function percentOf(progress: number): number {
-  return Math.floor(Math.min(Math.max(progress, 0), 1) * 100)
+  return Math.floor(clamp(progress, 0, 1) * 100)
 }
 
 export const LOADING_LABEL = 'Loading ffmpeg'
@@ -185,7 +185,7 @@ export class JoinProgress {
     const position = 1 + index
     this.enter(position, now)
     const entry = this.entries[position]
-    entry.done = entry.work * clamp01(ratio)
+    entry.done = entry.work * clamp(ratio, 0, 1)
     const clip = `clip ${index + 1} of ${this.segmentCount}`
     this.label = this.fellBack ? `${FALLBACK_LABEL} ${clip}` : `Cutting ${clip}`
     this.measure(entry.key as RateKey, now)
@@ -196,7 +196,7 @@ export class JoinProgress {
     const position = this.entries.length - 2
     this.enter(position, now)
     const entry = this.entries[position]
-    entry.done = entry.work * clamp01(ratio)
+    entry.done = entry.work * clamp(ratio, 0, 1)
     this.label = 'Combining clips'
     this.measure('concat', now)
     this.update(now)
@@ -337,8 +337,4 @@ export class JoinProgress {
     this.raw = Math.max(total - done, 0)
     this.lastUpdate = now
   }
-}
-
-function clamp01(value: number): number {
-  return Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : 0
 }

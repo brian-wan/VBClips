@@ -1,4 +1,4 @@
-import { groupBySource, mergeOverlaps, type Clip, type Span } from '../clips'
+import { clamp, groupBySource, mergeOverlaps, type Clip, type Span } from '../clips'
 
 export type JoinMode = 'fast' | 'precise'
 /** A stretch of one source to render; `sourceIndex` is the source's position in the timeline. */
@@ -116,15 +116,5 @@ export function formatEstimate(seconds: number): string {
 export function segmentRatio(time: number, seg: Span): number {
   const length = seg.end - seg.start
   if (!(length > 0) || !Number.isFinite(time)) return 0
-  return Math.min(Math.max(time / MICROSECONDS / length, 0), 1)
-}
-
-/** Overall progress with each segment weighted by its duration. */
-export function weightedProgress(segments: readonly Span[], index: number, ratio: number): number {
-  const total = totalDuration(segments)
-  if (total <= 0) return 0
-  const done = totalDuration(segments.slice(0, Math.max(index, 0)))
-  const current = segments[index]
-  const partial = current ? (current.end - current.start) * Math.min(Math.max(ratio, 0), 1) : 0
-  return Math.min((done + partial) / total, 1)
+  return clamp(time / MICROSECONDS / length, 0, 1)
 }

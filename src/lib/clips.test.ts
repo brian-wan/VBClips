@@ -3,7 +3,6 @@ import {
   canSetEnd,
   canSetStart,
   clampToDuration,
-  clipsOverlap,
   findOverlappingIds,
   insertClip,
   mergeOverlaps,
@@ -69,8 +68,7 @@ describe('overlaps', () => {
 
   it('only compares clips of the same source', () => {
     expect(findOverlappingIds([clip('a', 0, 5, 'x'), clip('b', 1, 6, 'y')]).size).toBe(0)
-    expect(clipsOverlap(clip('a', 0, 5, 'x'), clip('b', 1, 6, 'y'))).toBe(false)
-    expect(clipsOverlap(clip('a', 0, 5, 'x'), clip('b', 1, 6, 'x'))).toBe(true)
+    expect(findOverlappingIds([clip('a', 0, 5, 'x'), clip('b', 1, 6, 'x')]).size).toBe(2)
   })
 
   it('does not flag clips that only touch', () => {

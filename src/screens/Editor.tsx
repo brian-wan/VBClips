@@ -192,6 +192,10 @@ export function Editor({
     dispatch({ type: 'select', id: clip.id })
   }
 
+  const seekBy = (seconds: number) => player.seek(now() + seconds)
+  const prevClip = () => goToClip(prevClipIndex(sequenceClips, now(), selectedId))
+  const nextClip = () => goToClip(nextClipIndex(sequenceClips, now(), selectedId))
+
   const openInEditor = () => {
     const index = selectedIndex >= 0 ? selectedIndex : Math.max(labelIndex, 0)
     const clip = clips[index]
@@ -355,9 +359,9 @@ export function Editor({
     {
       mark,
       togglePlay,
-      seekBy: (seconds) => player.seek(now() + seconds),
-      prevClip: () => goToClip(prevClipIndex(sequenceClips, now(), selectedId)),
-      nextClip: () => goToClip(nextClipIndex(sequenceClips, now(), selectedId)),
+      seekBy,
+      prevClip,
+      nextClip,
       cycleSpeed: () => setSpeed(nextSpeed),
       editSelected: openInEditor,
       deleteSelected: () => {
@@ -521,9 +525,9 @@ export function Editor({
             hasClips={clips.length > 0}
             speed={speed}
             onTogglePlay={togglePlay}
-            onSeekBy={(seconds) => player.seek(now() + seconds)}
-            onPrevClip={() => goToClip(prevClipIndex(sequenceClips, now(), selectedId))}
-            onNextClip={() => goToClip(nextClipIndex(sequenceClips, now(), selectedId))}
+            onSeekBy={seekBy}
+            onPrevClip={prevClip}
+            onNextClip={nextClip}
             onOpenClip={openInEditor}
             onMark={mark}
             onSpeed={setSpeed}

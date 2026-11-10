@@ -1,4 +1,12 @@
-import { insertClip, isValidSpan, removeClip, replaceClip, sortClips, type Clip } from './clips'
+import {
+  clamp,
+  insertClip,
+  isValidSpan,
+  removeClip,
+  replaceClip,
+  sortClips,
+  type Clip,
+} from './clips'
 import { fingerprint, type VideoIdentity } from './fingerprint'
 import { moveSource } from './sequence'
 
@@ -25,7 +33,6 @@ export type SessionAction =
   | { type: 'markStart'; sourceId: string; time: number }
   | { type: 'markEnd'; sourceId: string; time: number; id: string }
   | { type: 'cancelMark' }
-  | { type: 'addClip'; clip: Clip }
   | { type: 'updateClip'; clip: Clip }
   | { type: 'deleteClip'; id: string }
   | { type: 'select'; id: string | null }
@@ -130,11 +137,6 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
     }
     case 'cancelMark':
       return { ...state, openStart: null }
-    case 'addClip': {
-      if (!state.sources.some((s) => s.id === action.clip.sourceId)) return state
-      const clips = insertClip(state.clips, action.clip, order(state.sources))
-      return commit(state, { clips }, action.clip.id)
-    }
     case 'updateClip': {
       const existing = state.clips.find((c) => c.id === action.clip.id)
       if (!existing || !isValidSpan(action.clip.start, action.clip.end)) return state
@@ -176,7 +178,7 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
       const { source } = action
       if (state.sources.some((s) => s.id === source.id)) return state
       const sources = [...state.sources]
-      sources.splice(Math.min(Math.max(action.index, 0), sources.length), 0, source)
+      sources.splice(clamp(action.index, 0, sources.length), 0, source)
       const known = new Set(state.clips.map((c) => c.id))
       const returning = action.clips.filter((c) => c.sourceId === source.id && !known.has(c.id))
       return commit(state, {

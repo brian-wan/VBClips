@@ -1,3 +1,4 @@
+import { clamp } from '../lib/clips'
 import styles from './ProgressLine.module.css'
 
 type Props = {
@@ -9,7 +10,7 @@ type Props = {
 
 /** A 2px accent line; the caller positions it with `className`. */
 export function ProgressLine({ value, className = '', label }: Props) {
-  const percent = value === null ? undefined : Math.round(Math.min(Math.max(value, 0), 1) * 100)
+  const percent = value === null ? undefined : Math.round(clamp(value, 0, 1) * 100)
   return (
     <div
       className={`${styles.line} ${className}`}

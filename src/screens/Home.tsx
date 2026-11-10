@@ -241,7 +241,6 @@ export function Home({ onOpen, error, onError }: Props) {
         type="file"
         accept="video/*"
         hidden
-        data-testid="home-file-input"
         onChange={(e) => {
           const files = [...(e.target.files ?? [])]
           e.target.value = ''

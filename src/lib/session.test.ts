@@ -21,6 +21,11 @@ const clip = (id: string, start: number, end: number, sourceId = a.id) => ({
   start,
   end,
 })
+/** Marks a clip the way the editor does: a start press, then an end press. */
+const mark = (id: string, start: number, end: number, sourceId = a.id): SessionAction[] => [
+  { type: 'markStart', sourceId, time: start },
+  { type: 'markEnd', sourceId, time: end, id },
+]
 
 describe('sources', () => {
   it('ids a source by its fingerprint', () => {
@@ -48,8 +53,8 @@ describe('sources', () => {
     const state = run(
       loaded,
       { type: 'addSource', source: b },
-      { type: 'addClip', clip: clip('x', 1, 3) },
-      { type: 'addClip', clip: clip('y', 1, 3, b.id) },
+      ...mark('x', 1, 3),
+      ...mark('y', 1, 3, b.id),
       { type: 'markStart', sourceId: b.id, time: 10 },
     )
     expect(state.selectedId).toBe('y')
@@ -66,8 +71,8 @@ describe('sources', () => {
       loaded,
       { type: 'addSource', source: b },
       { type: 'addSource', source: c },
-      { type: 'addClip', clip: clip('in-a', 1, 3) },
-      { type: 'addClip', clip: clip('in-c', 1, 3, c.id) },
+      ...mark('in-a', 1, 3),
+      ...mark('in-c', 1, 3, c.id),
     )
     expect(state.clips.map((x) => x.id)).toEqual(['in-a', 'in-c'])
     const moved = run(state, { type: 'moveSource', from: 2, to: 0 })
@@ -75,10 +80,6 @@ describe('sources', () => {
     expect(moved.clips.map((x) => x.id)).toEqual(['in-c', 'in-a'])
     expect(run(moved, { type: 'moveSource', from: 1, to: 1 })).toBe(moved)
     expect(run(moved, { type: 'moveSource', from: 0, to: 3 })).toBe(moved)
-  })
-
-  it('ignores clips for sources that are not in the session', () => {
-    expect(run(loaded, { type: 'addClip', clip: clip('x', 1, 3, 'nope') })).toBe(loaded)
   })
 })
 
@@ -135,9 +136,9 @@ describe('marking', () => {
 })
 
 describe('clip changes', () => {
-  const withClip = run(loaded, { type: 'addClip', clip: clip('a', 1, 3) })
+  const withClip = run(loaded, ...mark('a', 1, 3))
 
-  it('adds and selects a manual clip', () => {
+  it('adds and selects a marked clip', () => {
     expect(withClip.clips).toHaveLength(1)
     expect(withClip.selectedId).toBe('a')
   })
@@ -167,7 +168,7 @@ describe('clip changes', () => {
 })
 
 describe('undo and redo', () => {
-  const added = run(loaded, { type: 'addClip', clip: clip('a', 1, 3) })
+  const added = run(loaded, ...mark('a', 1, 3))
   const edited = run(added, { type: 'updateClip', clip: clip('a', 1, 5) })
   const deleted = run(edited, { type: 'deleteClip', id: 'a' })
 
@@ -189,7 +190,7 @@ describe('undo and redo', () => {
   })
 
   it('clears redo after a new change', () => {
-    const branched = run(deleted, { type: 'undo' }, { type: 'addClip', clip: clip('b', 8, 9) })
+    const branched = run(deleted, { type: 'undo' }, ...mark('b', 8, 9))
     expect(branched.future).toHaveLength(0)
     expect(run(branched, { type: 'redo' })).toBe(branched)
   })
@@ -209,7 +210,7 @@ describe('undo and redo', () => {
 
   it('reverts adding, removing and reordering sources', () => {
     const withB = run(added, { type: 'addSource', source: b })
-    const withBClip = run(withB, { type: 'addClip', clip: clip('b1', 0, 2, b.id) })
+    const withBClip = run(withB, ...mark('b1', 0, 2, b.id))
     const moved = run(withBClip, { type: 'moveSource', from: 1, to: 0 })
     const removed = run(moved, { type: 'removeSource', id: b.id })
     expect(removed.sources).toEqual([a])
@@ -242,7 +243,7 @@ describe('undo and redo', () => {
   it(`keeps at most ${HISTORY_LIMIT} undo steps`, () => {
     let state = loaded
     for (let i = 0; i < HISTORY_LIMIT + 10; i++) {
-      state = run(state, { type: 'addClip', clip: clip(`c${i}`, i, i + 1) })
+      state = run(state, ...mark(`c${i}`, i, i + 1))
     }
     expect(state.past).toHaveLength(HISTORY_LIMIT)
     for (let i = 0; i < HISTORY_LIMIT + 10; i++) state = run(state, { type: 'undo' })
@@ -252,11 +253,7 @@ describe('undo and redo', () => {
 
 describe('restoring what an undo toast refers to', () => {
   const marked = (state: SessionState, id: string, start: number, end: number, sourceId = a.id) =>
-    run(
-      state,
-      { type: 'markStart', sourceId, time: start },
-      { type: 'markEnd', sourceId, time: end, id },
-    )
+    run(state, ...mark(id, start, end, sourceId))
   const two = marked(marked(loaded, 'x', 1, 3), 'y', 10, 12)
 
   it('puts a deleted clip back as one undo step, leaving later changes alone', () => {

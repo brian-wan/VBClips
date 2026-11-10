@@ -135,39 +135,6 @@
   touch-action: none;
 }
 
-.tiles {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  pointer-events: none;
-}
-
-/* Tiles share the block width, so each is about 64px and the row always covers the block. */
-.tile {
-  flex: 1 1 0;
-  min-width: 0;
-  overflow: hidden;
-  background: var(--color-surface-raised);
-}
-
-.tile + .tile {
-  border-left: 1px solid rgba(0, 0, 0, 0.35);
-}
-
-.frame {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  animation: appear var(--motion);
-}
-
-@keyframes appear {
-  from {
-    opacity: 0;
-  }
-}
-
 .clip,
 .live {
   position: absolute;

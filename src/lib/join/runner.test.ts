@@ -385,6 +385,8 @@ describe('runJoin', () => {
     expect(afterFallback.find((e) => e.phase === 'cut')?.label).toBe(
       'Switched to Precise: re-encoding clip 1 of 2',
     )
+    // The reason is said once; the events after it carry no log line.
+    expect(afterFallback.slice(1).filter((e) => e.log)).toEqual([])
     expect(events.at(-1)).toMatchObject({ phase: 'done', mode: 'precise' })
     expect(ffmpeg.files.size).toBe(0)
   })

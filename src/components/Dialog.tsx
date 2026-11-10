@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import styles from './Dialog.module.css'
+import ui from './ui.module.css'
 
 type Props = {
   title: string
@@ -89,7 +90,7 @@ export function Dialog({ title, onClose, children, width, closeLabel = 'Done' }:
       >
         <header className={styles.header}>
           <h2 className={styles.title}>{title}</h2>
-          <button ref={doneRef} type="button" className={styles.done} onClick={onClose}>
+          <button ref={doneRef} type="button" className={ui.textButton} onClick={onClose}>
             {closeLabel}
           </button>
         </header>

@@ -1,3 +1,5 @@
+import { clamp } from './clips'
+
 /**
  * The sequence is the session's sources played back to back in list order. Sequence time runs
  * from 0 to the sum of the durations; each source's local time runs from 0 to its duration.
@@ -43,9 +45,9 @@ export function locate(sources: readonly Timed[], t: number): Location {
  */
 export function locateIn(sources: readonly Timed[], index: number, localTime: number): Location {
   if (sources.length === 0) return { index: -1, localTime: 0 }
-  const i = Math.min(Math.max(Math.trunc(index), 0), sources.length - 1)
+  const i = clamp(Math.trunc(index), 0, sources.length - 1)
   const length = lengthOf(sources[i])
-  const local = Number.isFinite(localTime) ? Math.min(Math.max(localTime, 0), length) : 0
+  const local = clamp(localTime, 0, length)
   return { index: i, localTime: local }
 }
 

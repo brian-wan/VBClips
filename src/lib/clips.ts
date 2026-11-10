@@ -3,7 +3,6 @@ export type Clip = { id: string; sourceId: string; start: number; end: number }
 export type Span = { start: number; end: number }
 
 export const MIN_CLIP_LENGTH = 0.2
-export const FRAME_DURATION = 1 / 30
 const EPSILON = 1e-6
 
 export function clamp(t: number, min: number, max: number): number {
@@ -56,10 +55,6 @@ export function removeClip(clips: readonly Clip[], id: string): Clip[] {
   return clips.filter((c) => c.id !== id)
 }
 
-export function clipsOverlap(a: Clip, b: Clip): boolean {
-  return a.sourceId === b.sourceId && a.start < b.end && b.start < a.end
-}
-
 export function groupBySource(clips: readonly Clip[]): Map<string, Clip[]> {
   const groups = new Map<string, Clip[]>()
   for (const clip of clips) {
@@ -109,7 +104,6 @@ export function totalClippedDuration(clips: readonly Clip[]): number {
   return total
 }
 
-/** Span for the "+" button: 2 s from the playhead, shifted back if it would run past the end. */
 export function canSetStart(clip: Span, start: number): boolean {
   return start >= -EPSILON && isValidSpan(start, clip.end)
 }

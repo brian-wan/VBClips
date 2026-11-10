@@ -106,9 +106,9 @@ export type CoreDownloaderOptions = {
 }
 
 /**
- * Fetches core files with progress and hands back blob URLs, as `@ffmpeg/util`'s `toBlobURL`
- * does. Blob URLs are kept for the page, so later loads (after Stop, or a fallback that needs a
- * file it already has) download nothing.
+ * Fetches core files with progress and hands back blob URLs, the way `toBlobURL` in
+ * `@ffmpeg/util` does. Blob URLs are kept for the page, so later loads (after Stop, or a
+ * fallback that needs a file it already has) download nothing.
  */
 export class CoreDownloader {
   private readonly fetch: (url: string, init: { signal?: AbortSignal }) => Promise<Response>

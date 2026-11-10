@@ -1,12 +1,6 @@
-import {
-  forwardRef,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type PointerEvent,
-  type RefObject,
-} from 'react'
+import { forwardRef, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { Filmstrip } from '../../components/Filmstrip'
+import { ProgressLine } from '../../components/ProgressLine'
 import ui from '../../components/ui.module.css'
 import { clipDuration, type Clip, type Span } from '../../lib/clips'
 import { TRIM_TILE_PX, tileCount, tileTimes } from '../../lib/filmstrip'
@@ -14,9 +8,9 @@ import { edgeTime, trimClip, type TrimEdge } from '../../lib/scrubber'
 import type { SourceMeta } from '../../lib/session'
 import { formatTimePrecise } from '../../lib/time'
 import { handleAt, shouldRecenter, timeAtX, trimWindow, xOfTime } from '../../lib/trimmer'
-import { ProgressLine } from '../../components/ProgressLine'
+import { useElementWidth } from '../../hooks/useElementWidth'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
-import { thumbnails, useThumbnails } from '../../media/thumbnails'
+import { thumbnails } from '../../media/thumbnails'
 import styles from './ClipEditor.module.css'
 
 type Props = {
@@ -41,19 +35,6 @@ type View = { start: number; end: number; window: Span }
 
 const percent = (t: number, window: Span) => `${(xOfTime(t, 1, window) * 100).toFixed(3)}%`
 
-/** Width of `ref`'s content box, kept current with a ResizeObserver. */
-function useWidth(ref: RefObject<HTMLElement | null>): number {
-  const [width, setWidth] = useState(0)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [ref])
-  return width
-}
-
 /** Selected clip editor pinned to the bottom of the sidebar. Focusable so `E` can jump into it. */
 export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
   {
@@ -72,7 +53,7 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
   ref,
 ) {
   const trackRef = useRef<HTMLDivElement>(null)
-  const width = useWidth(trackRef)
+  const width = useElementWidth(trackRef)
   const [drag, setDrag] = useState<Drag | null>(null)
   const [view, setView] = useState<View>(() => ({
     start: clip.start,
@@ -93,7 +74,6 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
   const { window: span } = view
   const shown = drag?.draft ?? clip
   const times = tileTimes(span.start, span.end, tileCount(width, TRIM_TILE_PX))
-  const frames = useThumbnails(source.id, url, times, true)
   const pending = thumbnails.progressOf(source.id, times)
 
   const localX = (e: PointerEvent<HTMLDivElement>) =>
@@ -157,15 +137,13 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
           aria-label={`Trim clip ${number}`}
         >
           <div ref={trackRef} className={styles.track}>
-            <div className={styles.tiles} aria-hidden="true">
-              {times.map((t, i) => (
-                <div key={t} className={styles.tile}>
-                  {frames[i] && (
-                    <img className={styles.frame} src={frames[i]} alt="" draggable={false} />
-                  )}
-                </div>
-              ))}
-            </div>
+            <Filmstrip
+              sourceId={source.id}
+              url={url}
+              times={times}
+              priority
+              className={styles.filmstrip}
+            />
             <div
               className={styles.dim}
               style={{ left: 0, right: `calc(100% - ${percent(shown.start, span)})` }}

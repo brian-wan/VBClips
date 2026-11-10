@@ -1,18 +1,11 @@
-import {
-  memo,
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent,
-  type ReactNode,
-  type RefObject,
-} from 'react'
+import { useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { Filmstrip } from '../../components/Filmstrip'
 import { Plus, Spinner } from '../../components/Icons'
 import { ProgressLine } from '../../components/ProgressLine'
 import { Tip } from '../../components/Tip'
 import ui from '../../components/ui.module.css'
 import type { Clip } from '../../lib/clips'
-import { TIMELINE_TILE_PX, shouldRelayout, tileCount, tileTimes } from '../../lib/filmstrip'
+import { TIMELINE_TILE_PX, tileCount, tileTimes } from '../../lib/filmstrip'
 import {
   edgeTime,
   hitTest,
@@ -25,8 +18,9 @@ import {
 import { dropIndex, toSequence, type Location } from '../../lib/sequence'
 import type { OpenMarker, SourceMeta } from '../../lib/session'
 import { formatTime, formatTimePrecise } from '../../lib/time'
+import { useElementWidth } from '../../hooks/useElementWidth'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
-import { useFrameProgress, useThumbnails } from '../../media/thumbnails'
+import { useFrameProgress } from '../../media/thumbnails'
 import styles from './Timeline.module.css'
 
 type Props = {
@@ -74,7 +68,8 @@ type Reorder = {
 /** Pointer travel in px before a press becomes a drag instead of a click. */
 const DRAG_THRESHOLD_PX = 3
 const BLOCK_GAP_PX = 2
-const RELAYOUT_DELAY_MS = 200
+/** The filmstrips are laid out again once the row has changed by more than a tile. */
+const RELAYOUT = { by: TIMELINE_TILE_PX, delayMs: 200 }
 
 const CURSOR: Record<ScrubberTarget['kind'], string> = {
   handle: 'ew-resize',
@@ -86,59 +81,6 @@ const CURSOR: Record<ScrubberTarget['kind'], string> = {
 const span = (start: number, end: number, duration: number) => ({
   left: `${percentOf(start, duration)}%`,
   width: `${percentOf(end, duration) - percentOf(start, duration)}%`,
-})
-
-/** Width of `ref`, updated at once the first time and then only after it changes by a tile. */
-function useLaidOutWidth(ref: RefObject<HTMLElement | null>): number {
-  const [width, setWidth] = useState(0)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    let timer: number | undefined
-    let laidOut = 0
-    const apply = (next: number) => {
-      laidOut = next
-      setWidth(next)
-    }
-    const observer = new ResizeObserver(([entry]) => {
-      const next = entry.contentRect.width
-      window.clearTimeout(timer)
-      if (laidOut === 0) apply(next)
-      else if (shouldRelayout(laidOut, next, TIMELINE_TILE_PX)) {
-        timer = window.setTimeout(() => apply(next), RELAYOUT_DELAY_MS)
-      }
-    })
-    observer.observe(el)
-    return () => {
-      window.clearTimeout(timer)
-      observer.disconnect()
-    }
-  }, [ref])
-  return width
-}
-
-const Filmstrip = memo(function Filmstrip({
-  sourceId,
-  url,
-  duration,
-  width,
-}: {
-  sourceId: string
-  url: string | undefined
-  duration: number
-  width: number
-}) {
-  const times = tileTimes(0, duration, tileCount(width, TIMELINE_TILE_PX))
-  const frames = useThumbnails(sourceId, url, times)
-  return (
-    <div className={styles.tiles} aria-hidden="true">
-      {times.map((t, i) => (
-        <div key={t} className={styles.tile}>
-          {frames[i] && <img className={styles.frame} src={frames[i]} alt="" draggable={false} />}
-        </div>
-      ))}
-    </div>
-  )
 })
 
 /** "Preparing frames 12/25" and a 2px line along the header while a block's frames load. */
@@ -178,7 +120,7 @@ export function Timeline({
   const stripRefs = useRef(new Map<string, HTMLDivElement>())
   const blockRefs = useRef(new Map<string, HTMLDivElement>())
   const inputRef = useRef<HTMLInputElement>(null)
-  const laidOutWidth = useLaidOutWidth(rowRef)
+  const laidOutWidth = useElementWidth(rowRef, RELAYOUT)
   const [drag, setDrag] = useState<StripDrag | null>(null)
   const [hover, setHover] = useState<{ x: number; t: number; target: ScrubberTarget } | null>(null)
   const [reorder, setReorder] = useState<Reorder | null>(null)
@@ -402,8 +344,7 @@ export function Timeline({
         <Filmstrip
           sourceId={source.id}
           url={urls.get(source.id)}
-          duration={source.duration}
-          width={blockWidth(source)}
+          times={tileTimes(0, source.duration, tileCount(blockWidth(source), TIMELINE_TILE_PX))}
         />
         {own.map((clip) => (
           <div
@@ -542,7 +483,6 @@ export function Timeline({
           accept="video/*"
           multiple
           hidden
-          data-testid="add-video-input"
           onChange={(e) => {
             const files = [...(e.target.files ?? [])]
             e.target.value = ''

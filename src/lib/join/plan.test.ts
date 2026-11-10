@@ -11,7 +11,6 @@ import {
   planSegments,
   segmentArgs,
   segmentRatio,
-  weightedProgress,
 } from './plan'
 
 const clip = (id: string, start: number, end: number, sourceId = 'a') => ({
@@ -203,30 +202,5 @@ describe('segmentRatio', () => {
   it('clamps to 0..1', () => {
     expect(segmentRatio(-5, seg)).toBe(0)
     expect(segmentRatio(50_000_000, seg)).toBe(1)
-  })
-})
-
-describe('weightedProgress', () => {
-  const segments = [
-    { start: 0, end: 10 },
-    { start: 20, end: 50 },
-  ]
-
-  it('weights each segment by its duration', () => {
-    expect(weightedProgress(segments, 0, 0.5)).toBeCloseTo(0.125)
-    expect(weightedProgress(segments, 1, 0)).toBeCloseTo(0.25)
-    expect(weightedProgress(segments, 1, 0.5)).toBeCloseTo(0.625)
-  })
-
-  it('is complete past the last segment', () => {
-    expect(weightedProgress(segments, 2, 0)).toBe(1)
-  })
-
-  it('clamps the ratio', () => {
-    expect(weightedProgress(segments, 0, 2)).toBeCloseTo(0.25)
-  })
-
-  it('is zero with nothing to render', () => {
-    expect(weightedProgress([], 0, 1)).toBe(0)
   })
 })

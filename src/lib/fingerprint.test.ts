@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fingerprint, sameVideo } from './fingerprint'
+import { fingerprint } from './fingerprint'
 
 const video = { name: 'match.mp4', size: 1234, lastModified: 1700000000000 }
 
@@ -9,7 +9,7 @@ describe('fingerprint', () => {
   })
 
   it('matches the same file and ignores extra fields', () => {
-    expect(sameVideo(video, { ...video, duration: 60 } as typeof video)).toBe(true)
+    expect(fingerprint({ ...video, duration: 60 } as typeof video)).toBe(fingerprint(video))
   })
 
   it.each([
@@ -17,6 +17,6 @@ describe('fingerprint', () => {
     ['size', { ...video, size: 1235 }],
     ['lastModified', { ...video, lastModified: 1 }],
   ])('rejects a different %s', (_, other) => {
-    expect(sameVideo(video, other)).toBe(false)
+    expect(fingerprint(other)).not.toBe(fingerprint(video))
   })
 })

@@ -161,11 +161,12 @@ export async function runJoin({
     startedAt: now(),
     onLearn: (learned) => saveRates(store, learned),
   })
+  /** The model's view for one delivered event; the phase is the model's stage. */
   const view = () => {
-    const { progress, remainingSeconds, label } = model.snapshot()
-    return { progress, remainingSeconds, label }
+    const { stage, progress, remainingSeconds, label } = model.snapshot()
+    return { phase: stage, progress, remainingSeconds, label }
   }
-  let current: JoinEvent = { phase: 'download', mode, segmentIndex: 0, ...view() }
+  let current: JoinEvent = { mode, segmentIndex: 0, ...view() }
   let pending = false
   let cancelFlush = () => undefined as void
   const cancelPending = () => {
@@ -177,8 +178,9 @@ export async function runJoin({
     current = { ...current, ...view() }
     onEvent?.(current)
   }
+  type Patch = Partial<Pick<JoinEvent, 'mode' | 'segmentIndex'>>
   /** Records the change and delivers it with the next frame, with any others before then. */
-  const emit = (patch: Partial<JoinEvent>) => {
+  const emit = (patch: Patch = {}) => {
     current = { ...current, ...patch }
     if (pending) return
     pending = true
@@ -187,11 +189,8 @@ export async function runJoin({
       deliver()
     })
   }
-  /** Delivers at once: the first event, a fallback (it carries a log line) and done. */
-  const emitNow = (patch: Partial<JoinEvent>) => {
-    current = { ...current, ...patch }
-    deliver()
-  }
+  /** Delivers at once: the first event and done. */
+  const emitNow = () => deliver()
 
   let startTicker: ReturnType<typeof setInterval> | undefined
   const stopTicking = () => {
@@ -202,14 +201,14 @@ export async function runJoin({
     model.download(received, total, now())
     if (total === null || received < total) {
       stopTicking()
-      emit({ phase: 'download' })
+      emit()
       return
     }
     model.start(now())
-    emit({ phase: 'start' })
+    emit()
     startTicker ??= setInterval(() => {
       model.tick(now())
-      emit({})
+      emit()
     }, START_TICK_MS)
   }
 
@@ -240,13 +239,14 @@ export async function runJoin({
   const outputSeconds = totalDuration(segments)
   const onProgress: ProgressListener = ({ time }) => {
     heardFromFFmpeg()
-    if (current.phase === 'cut') {
+    const { stage } = model.view()
+    if (stage === 'cut') {
       const index = current.segmentIndex
       model.cut(index, segmentRatio(time, segments[index]), now())
-    } else if (current.phase === 'concat') {
+    } else if (stage === 'concat') {
       model.concat(segmentRatio(time, { start: 0, end: outputSeconds }), now())
     } else return
-    emit({})
+    emit()
   }
   const onAbort = () => ffmpeg.terminate()
 
@@ -272,7 +272,7 @@ export async function runJoin({
         throw fail(`Segment ${i + 1} has no source video.`, renderMode)
       }
       model.cut(i, 0, now())
-      emit({ phase: 'cut', mode: renderMode, segmentIndex: i })
+      emit({ mode: renderMode, segmentIndex: i })
       const input = inputPath(seg.sourceIndex, file.name)
       const code = await ffmpeg.exec(segmentArgs(renderMode, seg, i, input))
       if (code !== 0) {
@@ -282,7 +282,7 @@ export async function runJoin({
     }
     await ffmpeg.writeFile(CONCAT_LIST, concatListContent(segments.length))
     model.concat(0, now())
-    emit({ phase: 'concat', segmentIndex: segments.length - 1 })
+    emit({ segmentIndex: segments.length - 1 })
     const code = await ffmpeg.exec(concatArgs(OUTPUT))
     await removeAll([...segmentFiles, CONCAT_LIST])
     if (code === 0) return true
@@ -294,7 +294,7 @@ export async function runJoin({
   }
 
   try {
-    emitNow({})
+    emitNow()
     await ffmpeg.load(onDownload, signal)
     stopTicking()
     // The download runs in the page, where terminate() cannot reach it.
@@ -306,25 +306,23 @@ export async function runJoin({
 
     arm()
     if (!(await render(mode))) {
+      // The one event whose phase is set by hand. It carries the reason as a log line, which
+      // later events must not repeat, so it is delivered without becoming the current event.
       model.fallback(now())
-      emitNow({
-        phase: 'fallback',
-        mode: 'precise',
-        segmentIndex: 0,
-        label: FALLBACK_LABEL,
-        log: FALLBACK_REASON,
-      })
+      cancelPending()
+      current = { ...current, ...view(), mode: 'precise', segmentIndex: 0 }
+      onEvent?.({ ...current, phase: 'fallback', label: FALLBACK_LABEL, log: FALLBACK_REASON })
       await render('precise')
     }
 
     model.save(now())
-    emit({ phase: 'save' })
+    emit()
     const data = await ffmpeg.readFile(OUTPUT)
     disarm()
     await removeAll([OUTPUT])
     const blob = new Blob([data as Uint8Array<ArrayBuffer>], { type: 'video/mp4' })
     model.finish(outputName, now())
-    emitNow({ phase: 'done' })
+    emitNow()
     return blob
   } catch (error) {
     if (signal?.aborted) throw new JoinCancelled()

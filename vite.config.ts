@@ -55,7 +55,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     // Pre-bundling breaks the worker and core URLs these packages resolve at runtime.
-    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util', '@ffmpeg/core', '@ffmpeg/core-mt'],
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/core', '@ffmpeg/core-mt'],
   },
   test: {
     include: ['src/**/*.test.ts'],

@@ -1,5 +1,6 @@
 import type { Toast } from '../hooks/useToasts'
 import styles from './Toasts.module.css'
+import ui from './ui.module.css'
 
 type Props = { toasts: Toast[]; onDismiss: (id: number) => void }
 
@@ -12,7 +13,7 @@ export function Toasts({ toasts, onDismiss }: Props) {
           {toast.action && (
             <button
               type="button"
-              className={styles.action}
+              className={`${ui.textButton} ${styles.action}`}
               onClick={() => {
                 toast.action?.onClick()
                 onDismiss(toast.id)
