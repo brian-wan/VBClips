@@ -30,6 +30,8 @@ decisions. If something here is impossible, say so in the report instead of impr
 5. Accurate progress for opening videos and for Join. Details in "Phase 5: Progress" below.
 6. Hardening, cleanup and stuck-path fixes from the two audits. Details in "Phase 6: Hardening"
    below.
+7. Hosting prep: host config, license, installable app, README deploy section. Details in
+   "Phase 7: Hosting prep" below.
 
 ## Screens
 
@@ -779,3 +781,69 @@ accessibility items named here. Where this conflicts with earlier sections, this
   Stop pressed during "Starting ffmpeg" returns to idle; an unhandled render error (temporarily
   thrown from a component in a scratch branch, not committed) shows the boundary screen; Tab from
   the Join dialog's last control wraps to its first; the keyboard trim moves an edge by 0.1 s.
+
+## Phase 7: Hosting prep
+
+Settled. The app is a static site; every visitor already has a private copy because nothing
+leaves the browser. This phase makes the repo deployable to a public URL in one step and
+installable as an app. It adds no backend, no accounts and no analytics.
+
+### Host configuration
+
+- `netlify.toml` at the repo root: build `pnpm build`, publish `dist`; headers for `/*`:
+  `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`,
+  `X-Content-Type-Options: nosniff`; for `/assets/*`: `Cache-Control: public, max-age=31536000,
+  immutable` (every asset name is hashed); a redirect `/* -> /index.html 200` so `/edit` reloads.
+- `vercel.json` with the same headers, cache rule and rewrite, so either host works unchanged.
+- `index.html` gains `<meta name="description">`, `<meta name="theme-color" content="#000000">`
+  and the manifest link. `public/robots.txt` allows everything.
+- A direct load of `/edit` with no video shows Home (already the case); keep it.
+
+### License
+
+- The bundled ffmpeg cores (`@ffmpeg/core`, `@ffmpeg/core-mt`) are GPL-2.0-or-later because
+  they include x264. The app is therefore published under **GPL-3.0-or-later**: a `LICENSE` file
+  with the full text, `"license": "GPL-3.0-or-later"` in `package.json`, and a README section
+  "License" that names FFmpeg and x264 and links to ffmpeg.wasm.
+
+### Installable app
+
+- `vite-plugin-pwa` (the one new dependency) with `registerType: 'prompt'`. Never auto-reload:
+  when a new version is waiting, show the existing toast "A new version is ready" with a "Reload"
+  action; the user decides, so an update never interrupts a join.
+- Manifest: name "VBClipper", short name "VBClipper", `display: standalone`, background and theme
+  `#000000`, start URL `/`, icons 192 and 512 px PNG rendered from the volleyball mark in
+  `src/components/Icons.tsx` (plus a maskable 512), generated once with a script under `scripts/`
+  and committed under `public/icons/`.
+- Precache: the app shell (`index.html`, the JS and CSS bundles, icons, favicon). Do not precache
+  the ffmpeg cores; cache them at runtime with a CacheFirst rule for `/assets/ffmpeg-core*` (one
+  year, both `.js` and `.wasm` and the worker) so a core is fetched once and the app works offline
+  after the first join. Cached responses keep their original headers, so the service worker stays
+  compatible with cross-origin isolation.
+- The dev server does not register the service worker (`devOptions.enabled: false`).
+
+### Home
+
+- Under the subtitle, one caption line: "Your videos never leave this computer." Nothing else
+  changes on Home.
+
+### README
+
+- A "Deploy" section: fork or clone, connect the repo to Netlify or Vercel, the config file does
+  the rest; https is required; the two headers and why; what happens on a host that cannot set
+  headers (single-thread core, slower Precise); the 32 MB first-visit download and that it is
+  cached by the browser and the service worker; bandwidth math for free tiers (about 3,000
+  first-time visitors per 100 GB).
+- An "Install as an app" paragraph (Chrome and Edge address-bar install, offline after first use)
+  and the "License" section above.
+
+### Verification
+
+- `pnpm build` produces `dist/manifest.webmanifest`, `dist/sw.js`, the icons, and still both
+  cores as separate assets; `pnpm preview` in headless Chrome registers the service worker, the
+  manifest is valid (Chrome's `getInstalledRelatedApps` is not needed; check
+  `navigator.serviceWorker.ready` and the manifest fetch), a reload of `/edit` under preview still
+  lands on Home, and after one Join the core request is served from the cache on the second join
+  (observe via `performance.getEntriesByType('resource')` transfer sizes). Validate `netlify.toml`
+  and `vercel.json` by reading them against the hosts' documented schemas; no account is created.
+- Whole suite, lint, typecheck, format check pass.
