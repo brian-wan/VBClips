@@ -73,7 +73,7 @@ describe('segmentArgs', () => {
     ])
   })
 
-  it('re-encodes in precise mode with capped decoder and encoder threads', () => {
+  it('re-encodes in precise mode with capped threads, keeping the source frame timing', () => {
     expect(segmentArgs('precise', seg, 3, '/in/game.mp4')).toEqual([
       '-threads',
       '4',
@@ -97,6 +97,10 @@ describe('segmentArgs', () => {
       '160k',
       '-threads',
       '4',
+      '-fps_mode',
+      'passthrough',
+      '-avoid_negative_ts',
+      'make_zero',
       '-movflags',
       '+faststart',
       'seg3.mp4',

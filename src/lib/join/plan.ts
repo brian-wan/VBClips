@@ -61,6 +61,9 @@ export function segmentArgs(mode: JoinMode, seg: Span, index: number, input: str
     ...['-threads', PRECISE_THREADS, ...cut],
     ...['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p'],
     ...['-c:a', 'aac', '-b:a', '160k', '-threads', PRECISE_THREADS],
+    // Keep the source's frame timing: without this, variable-frame-rate input (screen
+    // recordings) is padded to a constant 120 fps by duplicating frames.
+    ...['-fps_mode', 'passthrough', '-avoid_negative_ts', 'make_zero'],
     ...['-movflags', '+faststart', segmentFileName(index)],
   ]
 }
