@@ -24,7 +24,9 @@ decisions. If something here is impossible, say so in the report instead of impr
 2. Join: render the clips into one downloadable mp4 in the browser with ffmpeg.wasm.
    Details in "Phase 2: Join" below.
 3. Timeline: filmstrip preview, several source videos in one session, drag to reorder.
-   Details in "Phase 3: Timeline" below. Polish and mobile layout come after.
+   Details in "Phase 3: Timeline" below.
+4. Desktop look: denser, squarer controls so the editor reads as a desktop tool, not a phone
+   app. Details in "Phase 4: Desktop look" below.
 
 ## Screens
 
@@ -457,3 +459,81 @@ trimmer in iOS Photos or CapCut, zoomed in on the clip:
   each, cross a boundary during playback, reload and Continue Session with both files. Do not
   run a Join in the browser pane: a finished join downloads a file and the download prompt
   interrupts the user. Verify join planning through the unit tests instead.
+
+## Phase 4: Desktop look
+
+Settled. The editor currently borrows iOS proportions (17px labels, 48px pills, 44px round icon
+buttons, 16 to 24px card radii) and reads as a phone app stretched wide. This phase makes every
+component read as a desktop editing tool, in the spirit of CapCut desktop or Final Cut: smaller
+type, square-cornered controls, denser rows, visible hover states. Colors and the dark palette
+stay exactly as they are; the layout grid, the timeline, the trim strip, all interactions and all
+shortcuts stay as they are. Only sizes, shapes, type and spacing change. Where this section
+conflicts with sizes given earlier in "Screens", this section wins.
+
+### Tokens (replace in `src/index.css`)
+
+| Token | Value | Notes |
+| --- | --- | --- |
+| `--font-family` | `Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif` | No web font download; the app stays offline-capable |
+| `--font-title` | 24px | Home title only |
+| `--font-heading` | 15px / 600 | Panel titles ("Clips (12)", "Clip 6", dialog titles) |
+| `--font-body` | 13px | Every control label and row text |
+| `--font-caption` | 12px | Secondary text, times under the timeline, block headers |
+| `--font-micro` | 11px | Key chips, the speed badge |
+| `--radius-control` | 6px | Every button, input, segment and chip |
+| `--radius-panel` | 8px | Cards, dialogs, toasts, the Continue card |
+| `--control-height` | 32px | Default button and icon-button size |
+| `--control-height-small` | 28px | Segments, clip editor actions, row actions |
+| `--color-hover` | #3a3a3c | Kept; every button gets it on hover |
+
+Remove `--radius-pill`, `--height-pill`, `--size-icon-button`, `--radius-sheet`, `--radius-card`,
+`--font-label` and every use of them. The only round elements left are the mark button, the
+overlap dot and the playhead head. All times use `font-variant-numeric: tabular-nums`.
+
+### Shared controls (`src/components/ui.module.css`)
+
+- `button` (was `pill`): 32px tall, 0 12px padding, 6px radius, 13px/500, surface background,
+  hover `--color-hover`, pressed opacity. `primary`: accent background, black text. `secondary`:
+  surface background. `destructive`: transparent background, `--color-destructive` text, hover
+  tints the background `rgba(255, 69, 58, 0.15)`. No filled red buttons anywhere.
+- `iconButton`: 32×32, 6px radius (not a circle), 18px glyphs, same hover.
+- Tooltips: 12px, 6px radius, shown after 300 ms, and they name the key as a chip: a `<kbd>`
+  element at 11px with a 1px separator border and 4px radius, e.g. "Play  K".
+- `linkButton`: 13px.
+
+### Screens
+
+- **Top bar**: 44px. "‹ Home" is a 13px secondary icon-and-text button. Center: file name 13px
+  white, duration 12px secondary. Right: Join as a `primary` 32px button.
+- **Transport bar**: 48px. Play 36×36 square (6px radius) with a 20px glyph; the 5 s buttons and
+  "?" are 32px icon buttons; the clip navigation is one 32px group with 1px `--color-separator`
+  dividers between prev, label and next, 6px radius on the group. The mark button stays round but
+  shrinks to 40px with a 28px ring, and its "Space" caption becomes an 11px `<kbd>` chip under it.
+  The speed control is a 28px segmented group with 6px radius, 4px inner padding, segments 2px
+  radius, 12px text; the active segment is filled accent with black text. Groups keep 16px gaps.
+- **Clips sidebar**: 320px wide. Header 15px/600 title, 12px total. Rows 36px with 12px padding,
+  13px name in accent, 12px tabular range in secondary, 12px duration right-aligned; 1px separator
+  between rows; hover `--color-surface-raised`; the selected row has `--color-surface-raised` plus a
+  2px accent bar on its left edge instead of a rounded fill. The trash icon is a 28px icon button
+  shown on hover. Empty state 13px secondary.
+- **Clip editor**: no longer a card. It is a panel section with a 1px `--color-separator` top
+  border and 12px padding. Title row: 15px/600 "Clip 6" in accent, 12px "Length 0:05.0" right. The
+  trim strip stays 56px with the same frame and handles. Actions row: `secondary` 28px "Preview"
+  and `destructive` 28px "Delete clip" (text style, right-aligned).
+- **Timeline**: no shape changes. Block header text 12px, times row 12px tabular, the plus tile is
+  48×48 with a 6px radius, the "Add video" tooltip gains no key chip.
+- **Home**: still centered, max width 400px. Title 24px/700, subtitle 13px secondary. "Choose
+  Video" is a `primary` 36px button, full width. The Continue card is 8px radius with a 1px
+  separator border, 13px title, 12px subtitle, the trash a 32px icon button; the "Delete?" confirm
+  a 28px destructive text button. Hint and "How it works" 12px.
+- **Dialogs** (Join, shortcuts): 8px radius, 1px separator border, 15px/600 title, 13px body,
+  32px buttons, 20px padding. Shortcut rows show keys as `<kbd>` chips.
+- **Toasts**: 8px radius, 13px, 32px tall action button.
+- **Speed badge**: 11px, 6px radius, 22px tall.
+
+### Verification
+
+- `docs/editor-desktop.png` regenerated at 1440×900 (2x) with one video and three clips, one
+  selected. No page scroll at 1024×768 or 1440×900; every control still has its tooltip; keyboard
+  focus rings visible; the mark, speed and clip navigation still work by mouse and key.
+- Whole test suite, lint, typecheck, Prettier and build pass. No new dependencies.
