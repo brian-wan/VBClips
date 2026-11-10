@@ -368,8 +368,8 @@ model", "Persistence format" or "Phase 2: Join" above, this section wins.
   to seek, drag the playhead, click a clip segment to select, drag the selected clip's handles to
   trim (`src/lib/scrubber.ts` hit-test math stays, now evaluated inside the block under the pointer
   with local time).
-- **Filmstrip**: a row of 16:9 frames (`object-fit: cover`) covering the block, one per
-  `tileWidth = 64px`, taken at evenly spaced local times. Frames come from a hidden `<video>` per
+- **Filmstrip**: a row of frames covering the block, one per `tileWidth = 64px` at the strip's
+  48px height (`object-fit: cover`, so 16:9 sources are cropped a little at the sides), taken at evenly spaced local times. Frames come from a hidden `<video>` per
   source (`preload="metadata"`, muted) seeking in order and drawing to a canvas; store them as
   data URLs or `ImageBitmap`s in an in-memory cache keyed by `sourceId` and rounded time, never
   in `localStorage`. Tiles show a `#2C2C2E` placeholder until their frame arrives, so a long
@@ -418,11 +418,15 @@ trimmer in iOS Photos or CapCut, zoomed in on the clip:
 - One `<video>` element. When the playhead reaches the end of a source and a next source exists,
   swap `src` to the next source's object URL, seek 0 and keep playing (a brief black frame is
   acceptable). After the last source, pause at the end. Seeks to a sequence time in another
-  source swap `src` and seek to the local time. Speed persists across the swap.
+  source swap `src` and seek to the local time. Speed persists across the swap. A seek that
+  originates inside a source (a trim handle, a click or drag inside a block) stays in that source
+  even at its exact end: the player exposes `seekLocal(index, localTime)` for those, and only
+  sequence-time seeks (arrows, transport buttons, prev/next clip) go through `locate`.
 - Arrow keys and the transport buttons seek 5 s in sequence time, crossing boundaries.
 - Marking: Space marks in the current source. Pressing Space to end a clip while a different
   source is current shows the toast "A clip can't span two videos" and keeps the marker open;
-  Escape cancels it. A marker left open when playback auto-advances follows the same rule.
+  Escape cancels it. When playback auto-advances into the next source while a marker is open,
+  show the same toast at that moment and keep the marker open.
 - Top bar center: one source shows name and duration as before; several show "3 videos · 1:52:10".
 
 ### Home and persistence
@@ -432,7 +436,8 @@ trimmer in iOS Photos or CapCut, zoomed in on the clip:
   fingerprint of the first source; saving still removes other keys.
 - Continue Session opens a multi-select picker. Picked files match sources by fingerprint. If any
   source is still missing, the card lists them ("Still needed: court2.mov") with "Pick files" and
-  "Open without them", which drops the missing sources and their clips. The mismatch flow for a
+  "Open without them", which drops the missing sources and their clips. "Open without them" appears only
+  once at least one file matched, since a session with no videos has nothing to open. The mismatch flow for a
   single-source save ("Use it anyway" / "Pick another") stays.
 - Export JSON writes the version 2 shape.
 
