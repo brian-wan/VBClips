@@ -678,7 +678,7 @@ accessibility items named here. Where this conflicts with earlier sections, this
 - **Thumbnail extractor bounds.** `ready` resolves false after 15 s or on `dispose()`; after
   `ready`, an `error` on the hidden video drains both queues through `onMiss`, so a file that
   becomes unreadable costs no more than one timeout.
-- **Memory ceiling.** `MAX_OUTPUT_BYTES` stays 1.5 GB as the hard block. From 500 MB the summary
+- **Memory ceiling.** `MAX_OUTPUT_BYTES` stays 1.5 GB as the hard block. From 500 MB up to the block the summary
   adds "Large output: the browser may run out of memory. Precise mode makes a smaller file." The
   watchdog above turns a dead worker into the error "ffmpeg stopped responding, usually because
   the browser ran out of memory. Try fewer clips or Precise mode."
@@ -695,8 +695,9 @@ accessibility items named here. Where this conflicts with earlier sections, this
 
 - `newId()` falls back to a random 128-bit hex string when `crypto.randomUUID` is missing
   (plain-http LAN hosting).
-- **Undo toasts undo that change.** Deleting a clip or removing a source records the history
-  length; the toast's Undo dispatches `undo` only if history is unchanged, otherwise a new
+- **Undo toasts undo that change.** Deleting a clip or removing a source remembers the removal's
+  own history entry; the toast's Undo dispatches `undo` only if that entry is still the latest
+  step (a length check would be fooled once history is at its 50-step cap), otherwise a new
   `restoreClip(clip)` or `restoreSource(source, index, clips)` action re-inserts exactly what was
   removed. Reducer tests for both.
 - **Dialog keys.** The Dialog no longer swallows every key at the window. `useEditorShortcuts`
@@ -760,7 +761,9 @@ accessibility items named here. Where this conflicts with earlier sections, this
 
 - **Keyboard trim.** The trim strip (`role="group"`) is focusable (`tabIndex 0`). While it has
   focus, ← / → move the start edge by 0.1 s and Shift+← / Shift+→ move the end edge, through the
-  same `trimClip` validation and `updateClip`; its tooltip names these keys. No other new keys.
+  same `trimClip` validation and `updateClip`; its tooltip names these keys. Each press also seeks
+  the video to the moved edge, as dragging does. Clicking the strip does not focus it (clicks never
+  leave focus on a control), so the strip is reached by Tab. No other new keys.
 - **Clips list**: drop the `listbox`/`option` roles; each row is a `<button>` (Enter selects,
   double-click previews as today) with the trash as a sibling button, so rows are reachable by Tab.
 - **Timeline strip**: remove `role="slider"` and mark the strip `aria-hidden`; the keyboard seek
