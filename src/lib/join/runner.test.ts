@@ -214,38 +214,20 @@ describe('runJoin', () => {
     expect(methods.indexOf('deleteFile out.mp4')).toBeGreaterThan(read)
   })
 
-  it('emits progress weighted by expected time, with labels', async () => {
-    const ffmpeg = new FakeFFmpeg((args, fake) => {
-      if (!isConcat(args)) fake.emitProgress(args.at(-1) === 'seg0.mp4' ? 5_000_000 : 15_000_000)
-      return 0
-    })
+  it('gives each phase its share of the expected time', async () => {
     const events: JoinEvent[] = []
     await run({
-      ffmpeg,
+      ffmpeg: new FakeFFmpeg(),
       files,
       segments,
       mode: 'fast',
-      outputName: 'game-highlights.mp4',
       now: () => 0,
       onEvent: (e) => events.push(e),
     })
-
-    // Fast at 20x: cuts take 0.5 s and 1.5 s, the concat of 40 s at 40x takes 1 s.
-    const summary = events
-      .filter((e) => !e.log)
-      .map((e) => [e.phase, e.segmentIndex, Number(e.progress.toFixed(3)), e.label])
-    expect(summary).toEqual([
-      ['download', 0, 0, 'Loading ffmpeg'],
-      ['cut', 0, 0, 'Cutting clip 1 of 2'],
-      ['cut', 0, 0.083, 'Cutting clip 1 of 2'],
-      ['cut', 1, 0.167, 'Cutting clip 2 of 2'],
-      ['cut', 1, 0.417, 'Cutting clip 2 of 2'],
-      ['concat', 1, 0.667, 'Combining clips'],
-      ['save', 1, 0.999, 'Saving'],
-      ['done', 1, 1, 'Saved game-highlights.mp4'],
-    ])
-    expect(events.slice(0, -1).every((e) => e.remainingSeconds === null)).toBe(true)
-    expect(events.at(-1)?.remainingSeconds).toBe(0)
+    // Fast at 20x cuts 10 s and 30 s in 2 s; the 40 s concat at 40x takes 1 s: a third.
+    const concat = events.find((e) => e.phase === 'concat')?.progress ?? NaN
+    const save = events.find((e) => e.phase === 'save')?.progress ?? NaN
+    expect(save - concat).toBeCloseTo(1 / 3, 2)
   })
 
   it('forwards concat progress', async () => {

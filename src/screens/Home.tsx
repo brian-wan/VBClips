@@ -9,7 +9,8 @@ import { totalClippedDuration } from '../lib/clips'
 import { fingerprint } from '../lib/fingerprint'
 import { openingLabel, type Opening } from '../lib/opening'
 import { clearSessions, loadSession, type SavedSession } from '../lib/persistence'
-import { locate, toSequence } from '../lib/sequence'
+import { matchSavedSources } from '../lib/resume'
+import { keptPlayhead } from '../lib/sequence'
 import { formatTime } from '../lib/time'
 import { loadSource } from '../media/loadSource'
 import { unplayableMessage } from '../playable'
@@ -40,19 +41,6 @@ async function loadAll(files: File[], onEach: () => void): Promise<Loaded> {
   const first = failed[0]
   if (!first) return { sources }
   return { error: unplayableMessage(first.name), failedIds: failed.map(fingerprint) }
-}
-
-/** The saved playhead moved to where its source sits once missing sources are dropped. */
-function keptPlayhead(saved: SavedSession, kept: readonly LoadedSource[]): number {
-  const { index, localTime } = locate(saved.sources, saved.playhead)
-  const id = saved.sources[index]?.id
-  const keptIndex = kept.findIndex((s) => s.meta.id === id)
-  if (keptIndex < 0) return 0
-  return toSequence(
-    kept.map((s) => s.meta),
-    keptIndex,
-    localTime,
-  )
 }
 
 export function Home({ onOpen, error, onError }: Props) {
@@ -133,7 +121,10 @@ export function Home({ onOpen, error, onError }: Props) {
     onOpen({
       sources: loaded.sources,
       clips: session.clips.filter((c) => ids.has(c.sourceId)),
-      playhead: keptPlayhead(session, loaded.sources),
+      playhead: keptPlayhead(
+        session,
+        loaded.sources.map((s) => s.meta),
+      ),
     })
   }
 
@@ -155,22 +146,15 @@ export function Home({ onOpen, error, onError }: Props) {
   }
 
   const addMatches = (session: SavedSession, files: File[]) => {
-    const ids = new Set(session.sources.map((s) => s.id))
-    const next = new Map(found)
-    for (const file of files) {
-      const id = fingerprint(file)
-      if (ids.has(id)) next.set(id, file)
-    }
-    const matchedNone = files.every((file) => !ids.has(fingerprint(file)))
-    const [first] = files
-    if (session.sources.length === 1 && matchedNone && first) {
-      setMismatch(first)
+    const match = matchSavedSources(session, found, files)
+    if (match.kind === 'mismatch') {
+      setMismatch(match.file)
       return
     }
     setMismatch(null)
-    setFound(next)
+    setFound(match.found)
     setContinuing(true)
-    if (session.sources.every((s) => next.has(s.id))) void openSaved(session, next)
+    if (match.complete) void openSaved(session, match.found)
   }
 
   const handleFiles = (files: File[], mode: PickMode) => {

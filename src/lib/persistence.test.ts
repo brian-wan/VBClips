@@ -122,6 +122,24 @@ describe('persistence', () => {
     ['no sources', JSON.stringify({ ...good, sources: [] })],
     ['bad source', JSON.stringify({ ...good, sources: [{ name: 'x' }] })],
     ['missing video', JSON.stringify({ version: 1, clips: [], playhead: 0, savedAt: 0 })],
+    ['garbage', 'not json at all'],
+    ['a JSON string', JSON.stringify('session')],
+    ['missing playhead', JSON.stringify({ ...good, playhead: undefined })],
+    ['missing savedAt', JSON.stringify({ ...good, savedAt: undefined })],
+    ['missing clips', JSON.stringify({ ...good, clips: undefined })],
+    [
+      'source without duration',
+      JSON.stringify({ ...good, sources: [{ ...source, duration: null }] }),
+    ],
+    // JSON has no Infinity, but 1e999 parses to it.
+    ['infinite playhead', JSON.stringify(good).replace('"playhead":0', '"playhead":1e999')],
+    ['infinite clip end', JSON.stringify(good).replace('"end":3', '"end":1e999')],
+    ['string number', JSON.stringify({ ...good, savedAt: '1' })],
+    ['no version', JSON.stringify({ ...good, version: undefined })],
+    [
+      'wrong sourceId type',
+      JSON.stringify({ ...good, clips: [{ ...good.clips[0], sourceId: 5 }] }),
+    ],
   ])('rejects %s', (_, raw) => {
     expect(parseSavedSession(raw)).toBeNull()
   })

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   dropIndex,
+  keptPlayhead,
   locate,
   locateIn,
   moveSource,
@@ -98,5 +99,24 @@ describe('moveSource', () => {
     expect(dropIndex(1, 2)).toBe(1)
     expect(dropIndex(1, 4)).toBe(3)
     expect(moveSource(list, 0, dropIndex(0, 4))).toEqual(['b', 'c', 'd', 'a'])
+  })
+})
+
+describe('keptPlayhead', () => {
+  const a = { id: 'a', duration: 10 }
+  const b = { id: 'b', duration: 30 }
+  const c = { id: 'c', duration: 5 }
+
+  it('keeps the playhead in its source when earlier sources are dropped', () => {
+    // 25 s is 15 s into b; with a gone, b starts the sequence.
+    expect(keptPlayhead({ sources: [a, b, c], playhead: 25 }, [b, c])).toBe(15)
+  })
+
+  it('stays put when every source is kept', () => {
+    expect(keptPlayhead({ sources: [a, b], playhead: 12 }, [a, b])).toBe(12)
+  })
+
+  it('starts at 0 when the playhead was in a dropped source', () => {
+    expect(keptPlayhead({ sources: [a, b, c], playhead: 41 }, [a, b])).toBe(0)
   })
 })

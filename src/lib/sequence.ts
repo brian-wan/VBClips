@@ -56,6 +56,22 @@ export function toSequence(sources: readonly Timed[], index: number, localTime: 
   return offsetOf(sources, index) + localTime
 }
 
+type Identified = Timed & { readonly id: string }
+
+/**
+ * A saved playhead moved to where its source sits once some sources are dropped: the same local
+ * time in the same source, or 0 when that source is not among `kept`.
+ */
+export function keptPlayhead(
+  saved: { sources: readonly Identified[]; playhead: number },
+  kept: readonly Identified[],
+): number {
+  const { index, localTime } = locate(saved.sources, saved.playhead)
+  const id = saved.sources[index]?.id
+  const keptIndex = kept.findIndex((s) => s.id === id)
+  return keptIndex < 0 ? 0 : toSequence(kept, keptIndex, localTime)
+}
+
 /** The list with the item at `from` moved so it ends up at index `to`. */
 export function moveSource<T>(sources: readonly T[], from: number, to: number): T[] {
   const count = sources.length

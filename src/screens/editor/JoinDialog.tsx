@@ -17,6 +17,7 @@ import {
   totalDuration,
   type JoinMode,
 } from '../../lib/join/plan'
+import { applyJoinEvent, type RunningView } from '../../lib/join/events'
 import { LOADING_LABEL, loadRates, percentOf, remainingLabel } from '../../lib/join/progress'
 import {
   FALLBACK_REASON,
@@ -41,13 +42,7 @@ type Failure = { message: string; mode: JoinMode; log: string[] }
 
 type State =
   | { kind: 'setup' }
-  | {
-      kind: 'running'
-      event: JoinEvent
-      fellBack: boolean
-      startedAt: number
-      loadingLog: string | null
-    }
+  | ({ kind: 'running'; startedAt: number } & RunningView)
   | { kind: 'done'; result: Result }
   | { kind: 'error'; failure: Failure }
 
@@ -122,13 +117,9 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
     setNow(startedAt)
     setConfirmingStop(null)
     setCopied(false)
-    let fellBack = false
-    let loadingLog: string | null = null
-    setState({
-      kind: 'running',
-      fellBack,
-      startedAt,
-      loadingLog,
+    let view: RunningView = {
+      fellBack: false,
+      loadingLog: null,
       event: {
         phase: 'download',
         mode: joinMode,
@@ -137,14 +128,14 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
         remainingSeconds: null,
         label: LOADING_LABEL,
       },
-    })
+    }
+    setState({ kind: 'running', startedAt, ...view })
 
     const onEvent = (event: JoinEvent) => {
-      const loading = event.phase === 'download' || event.phase === 'start'
-      if (event.log && loading) loadingLog = event.log
-      else if (event.log && event.phase !== 'fallback') return
-      if (event.phase === 'fallback') fellBack = true
-      setState({ kind: 'running', event, fellBack, startedAt, loadingLog })
+      const next = applyJoinEvent(view, event)
+      if (!next) return
+      view = next
+      setState({ kind: 'running', startedAt, ...next })
     }
 
     try {
@@ -168,7 +159,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
       const url = URL.createObjectURL(blob)
       resultUrl.current = url
       downloadUrl(url, name)
-      setState({ kind: 'done', result: { url, name, size: blob.size, fellBack } })
+      setState({ kind: 'done', result: { url, name, size: blob.size, fellBack: view.fellBack } })
     } catch (error) {
       if (error instanceof JoinCancelled) {
         setState({ kind: 'setup' })
