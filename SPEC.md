@@ -58,7 +58,7 @@ Layout is a fixed-height grid filling the viewport (no page scroll):
 
 ```
 +-------------------------------------------------------------------------------+
-| Top bar: [‹ Home]  video-name.mp4 · 1:23:45     [Export JSON] [Join 12 Clips] |
+| Top bar: [‹ Home]  video-name.mp4 · 1:23:45                   [Join 12 Clips] |
 +---------------------------------------------------------+---------------------+
 |                                                         | Clips (12)          |
 |   Video, letterboxed, fills the remaining height        | ------------------- |
@@ -76,8 +76,7 @@ Layout is a fixed-height grid filling the viewport (no page scroll):
 - Grid: `minmax(0, 1fr) 360px`, 24px gutters, 16px gaps between rows. Background `#000`;
   the sidebar is a `#1C1C1E` panel with a 1px `#38383A` left border.
 - Top bar (56px): "‹ Home" text button on the left saves and returns home. Center: the file name
-  in white and the total duration in secondary grey. Right: a secondary "Export JSON" pill and the
-  orange "Join N Clips (m:ss)" pill, which opens the Join dialog (disabled when there are no clips).
+  in white and the total duration in secondary grey. Right: the orange "Join N Clips (m:ss)" pill, which opens the Join dialog (disabled when there are no clips).
 - Video: a `<video>` inside a black frame, `object-fit: contain`. Clicking anywhere on the
   video toggles play/pause. A play glyph fades in over the center for 400 ms on each toggle, as on
   YouTube. No hold gesture.
@@ -115,7 +114,8 @@ padding inside the sidebar. Use the layout's own whitespace rather than borders 
 ## Marking model
 
 - The mark button is green with a hollow ring when idle. Pressing it (or Space) records the
-  playhead as the open start marker. The button turns orange with a square stop glyph and the
+  playhead as the open start marker. If the video is paused, marking a start also
+  starts playback. The button turns orange with a square stop glyph and the
   scrubber draws the live segment. Pressing again records the end and saves the clip.
 - If the end would be less than 0.2 s after the start (user seeked backwards), show a toast
   "Clip end must come after its start" and stay in the marking state.
@@ -220,7 +220,7 @@ type SavedSession = {
 ```
 
 Save (debounced 300 ms) after every clip change and on back. Only one session is kept in
-phase 1. "Export JSON" in the top bar downloads this object as `<video name>.clips.json`.
+phase 1.
 
 ## Phase 2: Join
 
@@ -439,7 +439,6 @@ trimmer in iOS Photos or CapCut, zoomed in on the clip:
   "Open without them", which drops the missing sources and their clips. "Open without them" appears only
   once at least one file matched, since a session with no videos has nothing to open. The mismatch flow for a
   single-source save ("Use it anyway" / "Pick another") stays.
-- Export JSON writes the version 2 shape.
 
 ### Join
 

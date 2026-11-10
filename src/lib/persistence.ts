@@ -146,7 +146,3 @@ export function saveSession(store: KeyValueStore, session: SavedSession): void {
 export function clearSessions(store: KeyValueStore): void {
   for (const key of sessionKeys(store)) store.removeItem(key)
 }
-
-export function exportFileName(videoName: string): string {
-  return `${videoName}.clips.json`
-}

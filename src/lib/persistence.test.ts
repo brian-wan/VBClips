@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   buildSavedSession,
   clearSessions,
-  exportFileName,
   loadSession,
   parseSavedSession,
   saveSession,
@@ -114,9 +113,5 @@ describe('persistence', () => {
     ['missing video', JSON.stringify({ version: 1, clips: [], playhead: 0, savedAt: 0 })],
   ])('rejects %s', (_, raw) => {
     expect(parseSavedSession(raw)).toBeNull()
-  })
-
-  it('names the export after the video', () => {
-    expect(exportFileName('match.mp4')).toBe('match.mp4.clips.json')
   })
 })

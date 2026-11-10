@@ -12,7 +12,6 @@ import { ChevronLeft, FastForward, ListIcon, PauseIcon, PlayIcon } from '../comp
 import { ShortcutsModal } from '../components/ShortcutsModal'
 import { Toasts } from '../components/Toasts'
 import ui from '../components/ui.module.css'
-import { downloadJson } from '../download'
 import { useEditorShortcuts } from '../hooks/useEditorShortcuts'
 import { useSessionPersistence } from '../hooks/useSessionPersistence'
 import { useToasts } from '../hooks/useToasts'
@@ -20,7 +19,6 @@ import { useVideoPlayer } from '../hooks/useVideoPlayer'
 import { findOverlappingIds, totalClippedDuration, type Clip } from '../lib/clips'
 import { fingerprint } from '../lib/fingerprint'
 import { currentClipIndex, nextClipIndex, prevClipIndex } from '../lib/navigation'
-import { buildSavedSession, exportFileName } from '../lib/persistence'
 import { toSequence } from '../lib/sequence'
 import { initialSession, markEndProblem, sessionReducer } from '../lib/session'
 import { nextSpeed } from '../lib/speed'
@@ -186,6 +184,7 @@ export function Editor({
     if (!source) return
     if (openStart === null) {
       dispatch({ type: 'markStart', sourceId: source.id, time: here.localTime })
+      if (player.paused) player.play()
       return
     }
     const problem = markEndProblem(openStart, source.id, here.localTime)
@@ -278,14 +277,6 @@ export function Editor({
     [seekLocal, selectedSourceIndex],
   )
 
-  const exportJson = () => {
-    if (sources.length === 0) return
-    downloadJson(
-      exportFileName(sources[0].name),
-      buildSavedSession(sources, clips, getPlayhead(), Date.now()),
-    )
-  }
-
   const { pause, play, paused } = player
   const pauseForDrag = useCallback(() => {
     resumeAfterDrag.current = !paused
@@ -366,15 +357,6 @@ export function Editor({
           )}
         </div>
         <div className={styles.topEnd}>
-          <button
-            type="button"
-            className={`${ui.pillSecondary} ${styles.topPill} ${ui.tip} ${ui.tipBelow}`}
-            data-tip="Download the clip markers as JSON"
-            disabled={sources.length === 0}
-            onClick={exportJson}
-          >
-            Export JSON
-          </button>
           <span
             className={`${ui.tip} ${ui.tipBelow} ${ui.tipEnd}`}
             data-tip={clips.length === 0 ? 'Mark a clip first' : 'Join the clips into one video'}

@@ -35,8 +35,7 @@ Then open the URL Vite prints (usually http://localhost:5173).
    back in timeline order; drag a video's name to reorder.
 3. Press Space when a point starts and again when it ends. Each pair saves a clip. A clip stays
    inside one video: ending it in a different video shows "A clip can't span two videos".
-4. Review and fix clips in the sidebar, then use Join in the top bar to render one video, or
-   Export JSON to download the markers.
+4. Review and fix clips in the sidebar, then use Join in the top bar to render one video.
 
 The session saves to `localStorage` as you go. Browsers cannot reopen a file on their own, so
 Continue Session asks you to pick the same video files again (several at once is fine). If some
@@ -50,7 +49,7 @@ scrolls (only the clip list does). The minimum supported width is 1024px; below 
 sidebar becomes an overlay behind a toggle in the top bar.
 
 - Top bar: Home (saves and goes back), the file name and duration (or "3 videos · 1:52:10" with
-  several), Export JSON, and Join (see Joining clips below; disabled until there is a clip).
+  several), and Join (see Joining clips below; disabled until there is a clip).
 - Video: click to play or pause. A badge in the top-left shows the speed when it is above 1×.
   At the end of one video playback continues with the next.
 - Timeline: one block per video, sized by its share of the total length, each with a filmstrip
