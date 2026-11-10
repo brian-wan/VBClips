@@ -4,6 +4,7 @@ import { Dialog } from '../../components/Dialog'
 import ui from '../../components/ui.module.css'
 import { downloadUrl } from '../../download'
 import { getFFmpeg } from '../../join/ffmpeg'
+import { getStager } from '../../join/staging'
 import { formatBytes } from '../../lib/bytes'
 import type { Clip } from '../../lib/clips'
 import {
@@ -19,6 +20,7 @@ import {
 } from '../../lib/join/plan'
 import { applyJoinEvent, type RunningView } from '../../lib/join/events'
 import { LOADING_LABEL, loadRates, percentOf, remainingLabel } from '../../lib/join/progress'
+import { UNCACHED_NOTE } from '../../lib/join/stage'
 import {
   FALLBACK_REASON,
   JoinCancelled,
@@ -56,6 +58,7 @@ const LOG_TAIL = 20
 const PHASE_ANNOUNCEMENTS: Record<JoinEvent['phase'], string> = {
   download: 'Downloading ffmpeg',
   start: 'Starting ffmpeg',
+  stage: 'Preparing video',
   cut: 'Cutting clips',
   concat: 'Combining clips',
   save: 'Saving',
@@ -105,6 +108,8 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
   const [copied, setCopied] = useState(false)
   const [now, setNow] = useState(() => performance.now())
   const [preciseRate] = useState(() => loadRates(browserStore()).precise)
+  /** The sources will be mounted as picked, which Chrome on macOS reads slowly. */
+  const [uncached, setUncached] = useState(false)
 
   const abortRef = useRef<AbortController | null>(null)
   const resultUrl = useRef<string | null>(null)
@@ -116,6 +121,18 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
     const timer = window.setInterval(() => setNow(performance.now()), 500)
     return () => window.clearInterval(timer)
   }, [running])
+
+  useEffect(() => {
+    let current = true
+    void getStager()
+      .available(files)
+      .then((ok) => {
+        if (current && !ok) setUncached(true)
+      })
+    return () => {
+      current = false
+    }
+  }, [files])
 
   useEffect(
     () => () => {
@@ -142,11 +159,13 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
         progress: 0,
         remainingSeconds: null,
         label: LOADING_LABEL,
+        uncached: false,
       },
     }
     setState({ kind: 'running', startedAt, ...view })
 
     const onEvent = (event: JoinEvent) => {
+      if (event.uncached) setUncached(true)
       const next = applyJoinEvent(view, event)
       if (!next) return
       view = next
@@ -157,6 +176,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
       const blob = await runJoin({
         ffmpeg: getFFmpeg(),
         files,
+        stager: getStager(),
         segments,
         mode: joinMode,
         outputName: name,
@@ -224,6 +244,12 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
             <>
               <br />
               Large output: the browser may run out of memory. Precise mode makes a smaller file.
+            </>
+          )}
+          {uncached && (
+            <>
+              <br />
+              {UNCACHED_NOTE}
             </>
           )}
         </p>

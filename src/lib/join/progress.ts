@@ -1,15 +1,24 @@
 import type { KeyValueStore } from '../persistence'
 import { clamp, type Span } from '../clips'
 import { DEFAULT_RATE, type JoinMode } from './plan'
+import { stageLabel } from './stage'
 
 /**
  * Work per wall-clock second: output media seconds for `fast`, `precise` and `concat`, bytes for
- * `download`.
+ * `download` and `stage`.
  */
-export type Rates = { fast: number; precise: number; concat: number; download: number }
+export type Rates = {
+  fast: number
+  precise: number
+  concat: number
+  download: number
+  stage: number
+}
 export type RateKey = keyof Rates
 
-export const DEFAULT_RATES: Rates = { ...DEFAULT_RATE, concat: 40, download: 5e6 }
+export const DEFAULT_RATES: Rates = { ...DEFAULT_RATE, concat: 40, download: 5e6, stage: 500e6 }
+/** Byte copies, timed from their first chunk with no warm-up: no ffmpeg start-up to skip. */
+const BYTE_KEYS: ReadonlySet<RateKey> = new Set(['download', 'stage'])
 export const RATES_KEY = 'vbclipper:join-rates'
 /** Reading the output out of MEMFS into a Blob. Never learned. */
 const SAVE_BYTES_PER_SECOND = 200e6
@@ -25,6 +34,9 @@ const ESTIMATE_AFTER_MS = 3000
 const SMOOTHING = 0.3
 /** The bar stops short of full until the Blob exists. */
 const BEFORE_DONE = 0.999
+
+/** Entries before the first cut: the download and the stage. */
+const FIRST_CUT = 2
 
 const isRate = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0
@@ -43,6 +55,7 @@ export function loadRates(store: KeyValueStore | null): Rates {
       precise: pick('precise'),
       concat: pick('concat'),
       download: pick('download'),
+      stage: pick('stage'),
     }
   } catch {
     return { ...DEFAULT_RATES }
@@ -64,7 +77,7 @@ export function saveRates(store: KeyValueStore | null, learned: Partial<Rates>):
   }
 }
 
-export type JoinStage = 'download' | 'start' | 'cut' | 'concat' | 'save' | 'done'
+export type JoinStage = 'download' | 'start' | 'stage' | 'cut' | 'concat' | 'save' | 'done'
 
 /** `key` null means the fixed save rate. */
 type Entry = { stage: JoinStage; work: number; done: number; key: RateKey | null }
@@ -114,15 +127,16 @@ const STARTING_LABEL = 'Starting ffmpeg'
 export const FALLBACK_LABEL = 'Switched to Precise: re-encoding'
 
 /**
- * The join as a list of phases (download, one cut per segment, concat, save), each with an
+ * The join as a list of phases (download, stage, one cut per segment, concat, save), each with an
  * amount of work and a rate that turns it into expected seconds. Rates start from the stored
  * ones and are replaced by live measurements as each phase runs. Pure: the caller passes the
  * clock in.
  */
 export class JoinProgress {
-  /** Download, one cut per segment, concat, save: the order the work happens in. */
+  /** Download, stage, one cut per segment, concat, save: the order the work happens in. */
   private readonly entries: Entry[]
   private readonly downloadEntry: Entry
+  private readonly stageEntry: Entry
   private readonly concatEntry: Entry
   private readonly segmentCount: number
   private readonly rates: Rates
@@ -148,9 +162,11 @@ export class JoinProgress {
     this.segmentCount = segments.length
     const outputSeconds = segments.reduce((sum, s) => sum + Math.max(s.end - s.start, 0), 0)
     this.downloadEntry = { stage: 'download', work: 0, done: 0, key: 'download' }
+    this.stageEntry = { stage: 'stage', work: 0, done: 0, key: 'stage' }
     this.concatEntry = { stage: 'concat', work: outputSeconds, done: 0, key: 'concat' }
     this.entries = [
       this.downloadEntry,
+      this.stageEntry,
       ...segments.map((s): Entry => ({
         stage: 'cut',
         work: Math.max(s.end - s.start, 0),
@@ -185,9 +201,20 @@ export class JoinProgress {
     this.update(now)
   }
 
+  /** Copying the sources into the private file system: bytes copied of bytes to copy. */
+  stage(copied: number, total: number, now: number): void {
+    this.enter(this.entries.indexOf(this.stageEntry), now)
+    const entry = this.stageEntry
+    entry.work = Math.max(total, 0)
+    entry.done = clamp(copied, 0, entry.work)
+    this.label = stageLabel(copied, total)
+    this.measure('stage', now)
+    this.update(now)
+  }
+
   /** Segment `index` is `ratio` written. */
   cut(index: number, ratio: number, now: number): void {
-    const position = 1 + index
+    const position = FIRST_CUT + index
     const entry = this.entries[position]
     if (entry?.stage !== 'cut' || !entry.key) return
     this.enter(position, now)
@@ -223,17 +250,17 @@ export class JoinProgress {
 
   /**
    * Fast concat failed: every segment is cut again with Precise. The bar goes back to the end of
-   * the download share, the one time it moves backwards.
+   * the download and stage shares, the one time it moves backwards; the staged copies stay.
    */
   fallback(now: number): void {
     this.fellBack = true
     this.meters.delete('concat')
     this.meters.delete('precise')
-    for (const entry of this.entries.slice(1)) {
+    for (const entry of this.entries.slice(FIRST_CUT)) {
       entry.done = 0
       if (entry.stage === 'cut') entry.key = 'precise'
     }
-    this.current = 1
+    this.current = FIRST_CUT
     this.shown = 0
     this.smoothed = null
     this.label = FALLBACK_LABEL
@@ -278,8 +305,8 @@ export class JoinProgress {
     for (const [i, entry] of this.entries.entries()) {
       if (i < this.current || i >= position) continue
       entry.done = entry.work
-      // The download's last sample is its last chunk; core start time is not download time.
-      if (entry.key && entry.key !== 'download') this.measure(entry.key, now)
+      // A byte copy's last sample is its last chunk: core start or mount time is not copy time.
+      if (entry.key && !BYTE_KEYS.has(entry.key)) this.measure(entry.key, now)
       const next = this.entries[i + 1]
       if (entry.key && entry.key !== next?.key) this.learn(entry.key)
     }
@@ -299,8 +326,8 @@ export class JoinProgress {
       this.meters.set(key, meter)
     }
     const sample = { work: this.workDone(key), at: now }
-    // The download is timed from its first chunk; the others skip their warm-up.
-    const ready = key === 'download' ? sample.work > 0 : now - meter.start >= WARM_UP_MS
+    // Byte copies are timed from their first chunk; the others skip their warm-up.
+    const ready = BYTE_KEYS.has(key) ? sample.work > 0 : now - meter.start >= WARM_UP_MS
     if (!meter.base) {
       if (ready) meter.base = sample
       return

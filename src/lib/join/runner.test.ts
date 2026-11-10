@@ -16,6 +16,8 @@ import {
   type JoinEvent,
   type LogListener,
   type ProgressListener,
+  type StageListener,
+  type Stager,
 } from './runner'
 
 type Call = { method: string; args: unknown[] }
@@ -571,6 +573,114 @@ describe('runJoin', () => {
     await expect(
       run({ ffmpeg: new FakeFFmpeg(), files, segments: [], mode: 'fast' }),
     ).rejects.toBeInstanceOf(JoinError)
+  })
+})
+
+/** Reports `chunks` (bytes copied of the total) and resolves to `result`, or to staged copies. */
+class FakeStager implements Stager {
+  calls = 0
+  signals: (AbortSignal | undefined)[] = []
+  private readonly chunks: [number, number][]
+  private readonly result: 'copies' | null
+  private readonly copying: Promise<void>
+  constructor(
+    chunks: [number, number][],
+    result: 'copies' | null = 'copies',
+    copying: Promise<void> = Promise.resolve(),
+  ) {
+    this.chunks = chunks
+    this.result = result
+    this.copying = copying
+  }
+  async stage(sources: readonly File[], onProgress: StageListener, signal?: AbortSignal) {
+    this.calls++
+    this.signals.push(signal)
+    for (const [copied, total] of this.chunks) onProgress(copied, total)
+    await this.copying
+    signal?.throwIfAborted()
+    if (this.result === null) return null
+    return sources.map((source, i) => new File([source], `staged${i}.mov`))
+  }
+}
+
+describe('runJoin staging', () => {
+  it('stages after the core loads, mounts the copies and cuts from them', async () => {
+    const ffmpeg = new FakeFFmpeg()
+    const stager = new FakeStager([
+      [0, 2e9],
+      [1e9, 2e9],
+      [2e9, 2e9],
+    ])
+    const events: JoinEvent[] = []
+    await run({ ffmpeg, stager, files, segments, mode: 'fast', onEvent: (e) => events.push(e) })
+
+    expect(ffmpeg.calls[1]).toEqual({ method: 'mount', args: ['staged0.mov', '/in0'] })
+    expect(ffmpeg.execArgs()[0]).toEqual(segmentArgs('fast', first, 0, '/in0/staged0.mov'))
+    const staging = events.filter((e) => e.phase === 'stage')
+    expect(staging.map((e) => e.label)).toEqual([
+      'Preparing video · 0.0 of 2.0 GB',
+      'Preparing video · 1.0 of 2.0 GB',
+      'Preparing video · 2.0 of 2.0 GB',
+    ])
+    expect(events.indexOf(staging[0] as JoinEvent)).toBeGreaterThan(
+      events.findIndex((e) => e.phase === 'download'),
+    )
+    expect(events.every((e) => !e.uncached)).toBe(true)
+    // 2 GB at 500 MB/s is 4 s next to 2 s of cutting at 20 and 1 s of concat at 40.
+    expect(staging.at(-1)?.progress).toBeCloseTo(4 / (4 + 2 + 1), 3)
+  })
+
+  it('has no stage phase when every copy is already staged', async () => {
+    const events: JoinEvent[] = []
+    await run({
+      ffmpeg: new FakeFFmpeg(),
+      stager: new FakeStager([]),
+      files,
+      segments,
+      mode: 'fast',
+      onEvent: (e) => events.push(e),
+    })
+    expect(events.some((e) => e.phase === 'stage')).toBe(false)
+  })
+
+  it('mounts the originals and says so when the browser cannot stage', async () => {
+    const ffmpeg = new FakeFFmpeg()
+    const events: JoinEvent[] = []
+    const blob = await run({
+      ffmpeg,
+      stager: new FakeStager([], null),
+      files,
+      segments,
+      mode: 'fast',
+      onEvent: (e) => events.push(e),
+    })
+    expect(blob.size).toBe(4)
+    expect(ffmpeg.calls[1]).toEqual({ method: 'mount', args: ['game.mp4', '/in0'] })
+    expect(events.at(-1)).toMatchObject({ phase: 'done', uncached: true })
+  })
+
+  it('stops during staging without mounting anything', async () => {
+    let finish = () => undefined as void
+    const copying = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const stager = new FakeStager([[0, 1e9]], 'copies', copying)
+    const ffmpeg = new FakeFFmpeg()
+    const controller = new AbortController()
+    const joining = run({
+      ffmpeg,
+      stager,
+      files,
+      segments,
+      mode: 'fast',
+      signal: controller.signal,
+    })
+    await vi.waitFor(() => expect(stager.calls).toBe(1))
+    controller.abort()
+    finish()
+    await expect(joining).rejects.toBeInstanceOf(JoinCancelled)
+    expect(stager.signals).toEqual([controller.signal])
+    expect(ffmpeg.methods()).not.toContain('mount')
   })
 })
 

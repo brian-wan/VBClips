@@ -9,6 +9,7 @@ const event = (patch: Partial<JoinEvent>): JoinEvent => ({
   progress: 0.2,
   remainingSeconds: null,
   label: 'Cutting clip 1 of 2',
+  uncached: false,
   ...patch,
 })
 const start: RunningView = {

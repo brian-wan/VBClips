@@ -68,7 +68,26 @@ export interface FFmpegLike {
   terminate(): void
 }
 
-export type JoinPhase = 'download' | 'start' | 'cut' | 'concat' | 'save' | 'fallback' | 'done'
+/** Bytes copied of the bytes to copy, across every source being staged. */
+export type StageListener = (copied: number, total: number) => void
+
+/** Copies the sources somewhere ffmpeg reads quickly before they are mounted. */
+export interface Stager {
+  /**
+   * Resolves to the copies in `files` order, reusing copies made by earlier joins, or to null
+   * when this browser cannot stage (no private file system, no sync access handles, too little
+   * quota), so the originals are mounted instead. `onProgress` is called only when something
+   * needs copying. Aborting `signal` stops the copy, removes the partial file and rejects.
+   */
+  stage(
+    files: readonly File[],
+    onProgress: StageListener,
+    signal?: AbortSignal,
+  ): Promise<readonly File[] | null>
+}
+
+export type JoinPhase =
+  'download' | 'start' | 'stage' | 'cut' | 'concat' | 'save' | 'fallback' | 'done'
 
 export type JoinEvent = {
   phase: JoinPhase
@@ -80,12 +99,16 @@ export type JoinEvent = {
   remainingSeconds: number | null
   /** The phase label shown above the bar. */
   label: string
+  /** Staging was not possible, so the originals are mounted and reads may be slow. */
+  uncached: boolean
   log?: string
 }
 
 export type JoinOptions = {
   /** The sources in timeline order; `Segment.sourceIndex` points into this list. */
   files: readonly File[]
+  /** Copies the sources before they are mounted; without one the originals are mounted. */
+  stager?: Stager | null
   segments: readonly Segment[]
   mode: JoinMode
   /** Shown in the final label, "Saved <name>". */
@@ -135,11 +158,13 @@ export class JoinCancelled extends Error {
 }
 
 /**
- * Renders `segments` into one mp4. Each source is mounted at `/in<i>`, never copied into wasm
- * memory. Aborting `signal` terminates ffmpeg; the next run reloads the core.
+ * Renders `segments` into one mp4. Each source is staged by `stager` when there is one, then
+ * mounted at `/in<i>`, never copied into wasm memory. Aborting `signal` terminates ffmpeg; the
+ * next run reloads the core.
  */
 export async function runJoin({
   files,
+  stager = null,
   segments,
   mode,
   outputName = OUTPUT,
@@ -169,7 +194,7 @@ export async function runJoin({
     const { stage, progress, remainingSeconds, label } = model.snapshot()
     return { phase: stage, progress, remainingSeconds, label }
   }
-  let current: JoinEvent = { mode, segmentIndex: 0, ...view() }
+  let current: JoinEvent = { mode, segmentIndex: 0, uncached: false, ...view() }
   let pending = false
   let cancelFlush = () => undefined as void
   const cancelPending = () => {
@@ -184,7 +209,7 @@ export async function runJoin({
     current = { ...current, ...view() }
     onEvent?.(current)
   }
-  type Patch = Partial<Pick<JoinEvent, 'mode' | 'segmentIndex'>>
+  type Patch = Partial<Pick<JoinEvent, 'mode' | 'segmentIndex' | 'uncached'>>
   /** Records the change and delivers it with the next frame, with any others before then. */
   const emit = (patch: Patch = {}) => {
     if (finished) return
@@ -275,9 +300,11 @@ export async function runJoin({
   }
   const segmentFiles = segments.map((_, i) => segmentFileName(i))
 
+  /** What is mounted: the staged copies, or the originals when staging was not possible. */
+  let inputs: readonly File[] = files
   const render = async (renderMode: JoinMode): Promise<boolean> => {
     for (const [i, seg] of segments.entries()) {
-      const file = files[seg.sourceIndex]
+      const file = inputs[seg.sourceIndex]
       if (!file) {
         await removeAll(segmentFiles.slice(0, i))
         throw fail(`Segment ${i + 1} has no source video.`, renderMode)
@@ -314,7 +341,20 @@ export async function runJoin({
     stopTicking()
     // The download runs in the page, where terminate() cannot reach it.
     if (signal?.aborted) throw new JoinCancelled()
-    for (const [i, file] of files.entries()) {
+    if (stager) {
+      const staged = await stager.stage(
+        files,
+        (copied, total) => {
+          model.stage(copied, total, now())
+          emit()
+        },
+        signal,
+      )
+      if (signal?.aborted) throw new JoinCancelled()
+      if (staged?.length === files.length) inputs = staged
+      else emit({ uncached: true })
+    }
+    for (const [i, file] of inputs.entries()) {
       await ffmpeg.mount(file, mountPoint(i))
       mounted.push(mountPoint(i))
     }

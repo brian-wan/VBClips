@@ -41,7 +41,13 @@ const model = (options: Partial<JoinProgressOptions> = {}) =>
 
 describe('loadRates and saveRates', () => {
   it('starts from the defaults', () => {
-    expect(loadRates(memoryStore())).toEqual({ fast: 20, precise: 0.15, concat: 40, download: 5e6 })
+    expect(loadRates(memoryStore())).toEqual({
+      fast: 20,
+      precise: 0.15,
+      concat: 40,
+      download: 5e6,
+      stage: 500e6,
+    })
     expect(loadRates(null)).toEqual(DEFAULT_RATES)
   })
 
@@ -49,14 +55,28 @@ describe('loadRates and saveRates', () => {
     const store = memoryStore()
     saveRates(store, { precise: 1.8 })
     saveRates(store, { download: 42e6 })
+    saveRates(store, { stage: 800e6 })
     expect(JSON.parse(store.data.get(RATES_KEY) ?? '')).toEqual({
       version: 1,
       fast: 20,
       precise: 1.8,
       concat: 40,
       download: 42e6,
+      stage: 800e6,
     })
-    expect(loadRates(store)).toEqual({ fast: 20, precise: 1.8, concat: 40, download: 42e6 })
+    expect(loadRates(store)).toEqual({
+      fast: 20,
+      precise: 1.8,
+      concat: 40,
+      download: 42e6,
+      stage: 800e6,
+    })
+  })
+
+  it('reads rates stored before the stage rate existed', () => {
+    const store = memoryStore()
+    store.setItem(RATES_KEY, JSON.stringify({ version: 1, fast: 30, precise: 1, concat: 50 }))
+    expect(loadRates(store)).toMatchObject({ fast: 30, stage: 500e6 })
   })
 
   it('ignores broken, foreign and non-positive values', () => {
@@ -165,6 +185,52 @@ describe('JoinProgress percent', () => {
     progress.cut(0, 0.5, 0)
     expect(progress.view().label).toBe('Switched to Precise: re-encoding clip 1 of 2')
     expect(progress.view().progress).toBeCloseTo((6 + 5 / 0.15) / (6 + 40 / 0.15 + 1), 6)
+  })
+
+  it('keeps the staged share on the fallback', () => {
+    const progress = model({ segments: [{ start: 0, end: 10 }], mode: 'fast' })
+    progress.stage(1e9, 1e9, 0)
+    progress.cut(0, 1, 0)
+    progress.concat(1, 0)
+    progress.fallback(0)
+    // Staging 2 s at 500 MB/s; re-encoding 10 s at 0.15 is 66.7 s; concat 0.25 s.
+    expect(progress.view().progress).toBeCloseTo(2 / (2 + 10 / 0.15 + 0.25), 6)
+  })
+})
+
+describe('JoinProgress stage', () => {
+  it('weights the copy by bytes at 500 MB/s and labels it', () => {
+    const progress = model({ segments: [{ start: 0, end: 20 }], mode: 'fast' })
+    progress.stage(1.2e9, 4e9, 0)
+    // Staging 8 s; cutting 20 s at 20 is 1 s; concat 0.5 s.
+    expect(progress.view()).toMatchObject({
+      stage: 'stage',
+      label: 'Preparing video · 1.2 of 4.0 GB',
+    })
+    expect(progress.view().progress).toBeCloseTo(2.4 / (8 + 1 + 0.5), 6)
+    progress.cut(0, 0, 0)
+    expect(progress.view().progress).toBeCloseTo(8 / (8 + 1 + 0.5), 6)
+  })
+
+  it('times the copy from its first chunk, with no warm-up, and learns it when cutting starts', () => {
+    const learned: Partial<Rates>[] = []
+    const progress = model({
+      segments: [{ start: 0, end: 20 }],
+      mode: 'fast',
+      onLearn: (rates) => learned.push(rates),
+    })
+    progress.stage(0, 2e9, 0)
+    progress.stage(100e6, 2e9, 100)
+    progress.stage(2e9, 2e9, 2600)
+    // Mounting takes a while: it is not copy time.
+    progress.cut(0, 0, 9000)
+    expect(learned).toEqual([{ stage: 1.9e9 / 2.5 }])
+  })
+
+  it('has no share when nothing needed copying', () => {
+    const progress = model({ segments: [{ start: 0, end: 20 }], mode: 'fast' })
+    progress.cut(0, 0.5, 0)
+    expect(progress.view().progress).toBeCloseTo(0.5 / 1.5, 6)
   })
 })
 
