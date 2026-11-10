@@ -73,19 +73,29 @@ export function Home({ onOpen, error, onError }: Props) {
     return () => window.clearTimeout(timer)
   }, [confirmDelete])
 
-  /** Probes `files` while the control named by `from` shows the opening state. */
+  /** Set synchronously, so a second click before the next render cannot start another probe. */
+  const probing = useRef(false)
+
+  /**
+   * Probes `files` while the control named by `from` shows the opening state. Resolves to null
+   * without probing when another probe is still running.
+   */
   const probe = async (files: File[], from: PickMode) => {
+    if (probing.current) return null
+    probing.current = true
     setOpening({ names: files.map((f) => f.name), done: 0, from })
     try {
       return await loadAll(files, () =>
         setOpening((current) => current && { ...current, done: current.done + 1 }),
       )
     } finally {
+      probing.current = false
       setOpening(null)
     }
   }
 
   const openPicker = (mode: PickMode) => {
+    if (probing.current) return
     pickMode.current = mode
     const input = inputRef.current
     if (!input) return
@@ -95,6 +105,7 @@ export function Home({ onOpen, error, onError }: Props) {
 
   const openNew = async (file: File) => {
     const loaded = await probe([file], 'new')
+    if (loaded === null) return
     if (typeof loaded === 'string') onError(loaded)
     else onOpen({ sources: loaded, clips: [], playhead: 0 })
   }
@@ -106,6 +117,7 @@ export function Home({ onOpen, error, onError }: Props) {
       return file ? [file] : []
     })
     const loaded = await probe(picked, 'continue')
+    if (loaded === null) return
     if (typeof loaded === 'string') {
       onError(loaded)
       return
@@ -121,6 +133,7 @@ export function Home({ onOpen, error, onError }: Props) {
   /** "Use it anyway": the one saved source is replaced by a different file, clips and all. */
   const openWithReplacement = async (session: SavedSession, file: File) => {
     const loaded = await probe([file], 'continue')
+    if (loaded === null) return
     if (typeof loaded === 'string') {
       onError(loaded)
       return
@@ -298,6 +311,7 @@ export function Home({ onOpen, error, onError }: Props) {
             <button
               type="button"
               className={`${ui.primary} ${ui.small}`}
+              disabled={opening !== null}
               onClick={() => openPicker('continue')}
             >
               Pick files
@@ -306,6 +320,7 @@ export function Home({ onOpen, error, onError }: Props) {
               <button
                 type="button"
                 className={`${ui.secondary} ${ui.small}`}
+                disabled={opening !== null}
                 onClick={() => void openSaved(saved, found)}
               >
                 Open without them
@@ -325,6 +340,7 @@ export function Home({ onOpen, error, onError }: Props) {
             <button
               type="button"
               className={`${ui.primary} ${ui.small}`}
+              disabled={opening !== null}
               onClick={() => void openWithReplacement(saved, mismatch)}
             >
               Use it anyway
@@ -332,6 +348,7 @@ export function Home({ onOpen, error, onError }: Props) {
             <button
               type="button"
               className={`${ui.secondary} ${ui.small}`}
+              disabled={opening !== null}
               onClick={() => openPicker('continue')}
             >
               Pick another
