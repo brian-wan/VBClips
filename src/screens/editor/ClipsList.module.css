@@ -160,8 +160,9 @@
     visibility: hidden;
   }
 
+  /* `inherit`, not `visible`: a closed sidebar overlay must still hide it. */
   .row.selected .trash {
-    visibility: visible;
+    visibility: inherit;
     opacity: 1;
   }
 }

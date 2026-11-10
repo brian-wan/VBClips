@@ -318,12 +318,13 @@
     opacity: 1;
   }
 
+  /* Reaches 2px past the block, into the gap, so the next block's header keeps its own. */
   .remove::before {
     content: '';
     position: absolute;
     top: -26px;
-    right: -14px;
+    right: -6px;
     bottom: -2px;
-    left: -14px;
+    left: -22px;
   }
 }
