@@ -140,6 +140,11 @@ Shortcuts are ignored while focus is in a text input.
 
 ![The editor at 1440×900](docs/editor-desktop.png)
 
+On a phone the editor becomes one touch column: video, timeline, transport bar, then the clips
+panel, with a Mark button in place of Space.
+
+<img src="docs/editor-phone.png" alt="The editor on a 390×844 phone" width="390">
+
 ## Layout
 
 - `src/lib/`: pure clip math, sequence time across sources, navigation rules, timeline
