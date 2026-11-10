@@ -34,6 +34,7 @@ decisions. If something here is impossible, say so in the report instead of impr
    "Phase 7: Hosting prep" below.
 8. Fast file access for Join: stage the source in the browser's private file system, and keep
    variable frame rate in Precise. Details in "Phase 8: Join speed" below.
+9. Phones and tablets: a single-column touch layout. Details in "Phase 9: Mobile" below.
 
 ## Screens
 
@@ -923,3 +924,72 @@ screen recording in `~/Downloads`) and on a generated 1080p file.
   OPFS during the editor session and gone after Home; a second join reuses it (no `stage` phase);
   with OPFS blocked (override `navigator.storage.getDirectory` to throw), the join still completes
   through the direct mount and the summary shows the one-line note.
+
+## Phase 9: Mobile
+
+Settled. The desktop layout stays exactly as it is at 1024px and up. Below that the app becomes
+a touch tool. Two inputs drive the rules: viewport width (`max-width: 699px` is a phone,
+700 to 1023px a tablet) and pointer type (`(pointer: coarse)` is touch). Nothing about the data,
+the join or the shortcuts changes; keyboard shortcuts keep working when a keyboard is attached.
+
+### Phone layout (under 700px wide)
+
+- One column, no page scroll, height `100dvh`, safe-area insets applied: the top bar adds
+  `env(safe-area-inset-top)`, the bottom-most panel adds `env(safe-area-inset-bottom)`, and both
+  sides keep `max(12px, env(safe-area-inset-left/right))` gutters.
+- Rows from the top: top bar 44px (Home, file name and duration, Join as an icon-and-text button
+  that shrinks to its icon under 360px); the video at full width in a 16:9 frame capped at 38% of
+  the viewport height (letterboxed, `object-fit: contain`); the timeline (header 20px, filmstrip
+  56px, times row); the transport bar 56px; then the clips panel filling the remaining height.
+  The clips panel is always visible: no sidebar toggle and no overlay on phones. Its list scrolls
+  inside the panel; the clip editor with the trim strip stays pinned at the panel's bottom when a
+  clip is selected, as on desktop.
+- Landscape phones (height under 500px): the video cap drops to 30% and the clips panel may get
+  as little as 120px; it still scrolls.
+- The mark button is 56px round in the transport bar's center; its caption reads "Mark" on
+  touch instead of "Space". The 5 s buttons, clip navigation and speed control stay; the "?"
+  shortcuts button is hidden on touch (nothing to list), and the top-bar Join button keeps its
+  text where it fits.
+
+### Tablet layout (700 to 1023px)
+
+- Today's behavior stays: the desktop grid with the clips sidebar as an overlay behind a top-bar
+  toggle. Touch rules below apply when the pointer is coarse.
+
+### Touch rules (`(pointer: coarse)`, any width)
+
+- Every control is at least 44×44 CSS px of hit area (padding or a pseudo-element, the visual
+  size may stay smaller). Buttons get `touch-action: manipulation` so double taps do not zoom.
+- Trim handles on the timeline and the trim strip draw 12px wide and accept pointers within 22px;
+  the scrubber and trimmer hit-test tolerances (`HANDLE_HIT_PX`, `PLAYHEAD_HIT_PX`, the trimmer's
+  handle tolerance) are read from a `pointerTolerance()` helper that returns the larger values when
+  `matchMedia('(pointer: coarse)')` matches, covered by a unit test on the pure math.
+- No hover tooltips and no key chips on touch: the `Tip` component renders nothing when the
+  pointer is coarse; `aria-label`s stay so screen readers are unchanged. The trim strip shows a
+  one-line caption under it on touch: "Drag the handles to trim" (replaces the key hint).
+- Long press on a clip row is not used; a tap selects, a second tap on the selected row plays that
+  clip only (the desktop double-click). Strip drags, header reorder and the plus tile work by touch
+  as they do by mouse (pointer events already handle both); `-webkit-touch-callout: none` and
+  `user-select: none` on the strips so a long drag never opens the callout or selects text.
+- The Join dialog is full-screen on phones (no backdrop margin) with 44px buttons. On touch
+  devices it adds one line to the summary when the estimated output exceeds 200 MB: "On a phone,
+  large joins can run out of memory. Fast mode and fewer clips help."
+
+### Home on phones
+
+- Same content, 16px gutters, Choose Video and the Continue card full width, 44px tall controls.
+
+### Verification
+
+- Unit tests: `pointerTolerance()` values; nothing else is pure.
+- Headless Chrome with device emulation and touch (`Emulation.setDeviceMetricsOverride`,
+  `Emulation.setTouchEmulationEnabled`, `Emulation.setEmitTouchEventsForMouse`) at 390×844
+  portrait and 844×390 landscape, plus 768×1024: no horizontal scroll and no page scroll; every
+  interactive element's hit box is at least 44×44; open a video, mark two clips with the mark
+  button, trim with a touch drag on the trim strip and on the timeline, reorder two videos by a
+  touch drag, run a Fast join (downloads denied); screenshots of the editor at 390×844 saved as
+  `docs/editor-phone.png` (2x) and shown in the README with one sentence. The desktop screenshot
+  and the desktop layout at 1440×900 are unchanged (compare the DOM rects of the top bar,
+  transport bar and sidebar before and after).
+- A real iPhone or Android check is the user's; list what to look at in the report (safe-area
+  fit, the Photos picker, join memory).
