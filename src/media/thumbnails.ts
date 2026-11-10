@@ -6,17 +6,45 @@ const FRAME_HEIGHT = 112
 const SEEK_TIMEOUT_MS = 4000
 const JPEG_QUALITY = 0.7
 
+/**
+ * Off-screen holder for the extractors' videos. Chrome may stop loading data for detached,
+ * paused media elements, which stalls their seeks; elements in the document keep working.
+ */
+function hiddenHost(): HTMLElement {
+  const existing = document.getElementById('thumbnail-videos')
+  if (existing) return existing
+  const host = document.createElement('div')
+  host.id = 'thumbnail-videos'
+  host.setAttribute('aria-hidden', 'true')
+  Object.assign(host.style, {
+    position: 'fixed',
+    left: '-10000px',
+    top: '0',
+    width: '1px',
+    height: '1px',
+    overflow: 'hidden',
+    opacity: '0',
+    pointerEvents: 'none',
+  })
+  document.body.append(host)
+  return host
+}
+
 type Listener = () => void
 
 /**
  * Pulls preview frames out of one source with its own hidden, muted video element, one seek at
- * a time in request order.
+ * a time. The timeline and the trim strip each keep one list of wanted times; a new request
+ * replaces that list, so frames for a stale tile layout are never waited on. The trim strip's
+ * list goes first.
  */
 class Extractor {
   readonly url: string
   private readonly video = document.createElement('video')
   private readonly canvas = document.createElement('canvas')
-  private readonly queue: number[] = []
+  private queue: number[] = []
+  private priorityQueue: number[] = []
+  private readonly retried = new Set<number>()
   private readonly ready: Promise<boolean>
   private running = false
   private disposed = false
@@ -41,25 +69,24 @@ class Extractor {
       this.video.addEventListener('error', () => resolve(false), { once: true })
     })
     this.video.src = url
+    hiddenHost().append(this.video)
   }
 
   request(times: readonly number[], priority: boolean) {
     const wanted = times.map(roundThumbTime).filter((t) => !this.has(thumbKey(this.sourceId, t)))
     const fresh = wanted.filter((t, i) => wanted.indexOf(t) === i)
-    if (priority) {
-      const rest = this.queue.filter((t) => !fresh.includes(t))
-      this.queue.splice(0, this.queue.length, ...fresh, ...rest)
-    } else {
-      for (const t of fresh) if (!this.queue.includes(t)) this.queue.push(t)
-    }
+    if (priority) this.priorityQueue = fresh
+    else this.queue = fresh
     void this.run()
   }
 
   dispose() {
     this.disposed = true
-    this.queue.length = 0
+    this.queue = []
+    this.priorityQueue = []
     this.video.removeAttribute('src')
     this.video.load()
+    this.video.remove()
   }
 
   private async run() {
@@ -67,12 +94,18 @@ class Extractor {
     this.running = true
     try {
       if (!(await this.ready)) return
-      while (!this.disposed && this.queue.length > 0) {
-        const t = this.queue.shift()!
+      while (!this.disposed) {
+        const t = this.priorityQueue.shift() ?? this.queue.shift()
+        if (t === undefined) break
         const key = thumbKey(this.sourceId, t)
         if (this.has(key)) continue
         const frame = await this.capture(t)
-        if (frame && !this.disposed) this.onFrame(key, frame)
+        if (this.disposed) break
+        if (frame) this.onFrame(key, frame)
+        else if (!this.retried.has(t)) {
+          this.retried.add(t)
+          this.queue.push(t)
+        }
       }
     } finally {
       this.running = false
@@ -105,8 +138,12 @@ class Extractor {
     canvas.width = Math.round((FRAME_HEIGHT * videoWidth) / videoHeight)
     const context = canvas.getContext('2d')
     if (!context) return null
-    context.drawImage(this.video, 0, 0, canvas.width, canvas.height)
-    return canvas.toDataURL('image/jpeg', JPEG_QUALITY)
+    try {
+      context.drawImage(this.video, 0, 0, canvas.width, canvas.height)
+      return canvas.toDataURL('image/jpeg', JPEG_QUALITY)
+    } catch {
+      return null
+    }
   }
 }
 
