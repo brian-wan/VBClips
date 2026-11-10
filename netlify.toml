@@ -15,6 +15,12 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
+# Netlify serves .webmanifest as application/octet-stream without this.
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+
 # The app routes on the client, so a reload of /edit must get index.html.
 [[redirects]]
   from = "/*"
