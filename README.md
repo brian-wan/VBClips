@@ -22,11 +22,13 @@ Then open the URL Vite prints (usually http://localhost:5173).
 | ------------------- | ------------------------------------------------------------------------------- |
 | `pnpm dev`          | Start the dev server                                                            |
 | `pnpm build`        | Type-check and build to `dist/`                                                 |
+| `pnpm preview`      | Serve `dist/`; the service worker only runs here, never under `pnpm dev`        |
 | `pnpm test`         | Run the Vitest unit tests in `src/lib/`, `src/join/` and `src/playable.test.ts` |
 | `pnpm typecheck`    | Type-check without building                                                     |
 | `pnpm lint`         | Run ESLint with type-aware rules; any warning fails                             |
 | `pnpm format`       | Format with Prettier                                                            |
 | `pnpm format:check` | Check formatting without writing                                                |
+| `pnpm icons`        | Render the app icons in `public/icons/` from the volleyball mark (needs Chrome) |
 
 ## Using it
 
@@ -89,9 +91,9 @@ read-only, never uploaded or copied into memory.
 - Precise re-encodes each clip with H.264/AAC, so cuts are frame-accurate. It is much slower in
   the browser; the mode card shows an estimate at the speed this browser managed last time.
 
-While a join runs, one bar covers the whole job: downloading ffmpeg (about 33 MB, only the first
-time in a page, with the bytes shown), cutting each clip, combining them and saving. Each part
-takes its share of the bar by how long it is expected to take, so the percent tracks real work
+While a join runs, one bar covers the whole job: downloading ffmpeg (about 32 MB with the bytes shown, only
+for the first join on this device, since the service worker keeps it), cutting each clip,
+combining them and saving. Each part takes its share of the bar by how long it is expected to take, so the percent tracks real work
 and never moves backwards (except once, if Fast has to switch to Precise). The time left comes
 from the speed measured during the run, smoothed so it does not flicker, and reads "Estimating…"
 for the first few seconds. The measured speeds (download, Fast, Precise and combining) are kept
@@ -105,27 +107,6 @@ complete.
 If Fast cannot combine the clips (usually because their codec settings differ, as with videos
 from different cameras), the join switches to Precise on its own and says why. The joined file is assembled in browser memory, so Join refuses
 selections whose output would exceed about 1.5 GB.
-
-### Hosting
-
-ffmpeg's multi-thread core needs `SharedArrayBuffer`, which browsers only allow on cross-origin
-isolated pages. `pnpm dev` and `pnpm preview` already send the two headers; a static host serving
-`dist/` must send them on every response too:
-
-```
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: require-corp
-```
-
-Without them the app falls back to the single-thread core, which works everywhere but is slower,
-especially in Precise mode.
-
-Serve it over https (localhost is fine for development): cross-origin isolation and
-`crypto.randomUUID` both need a secure context, so plain http on a LAN address gets neither. And
-since `require-corp` blocks every cross-origin resource that does not send a
-`Cross-Origin-Resource-Policy` header, any asset added later from another origin (a font, an
-image CDN) must send one or be served from the app itself. The core's `.js`, `.wasm` and worker files are bundled as separate
-assets in `dist/assets/`, so the app never loads them from a CDN and works offline.
 
 ## Keyboard shortcuts
 
@@ -156,11 +137,64 @@ Shortcuts are ignored while focus is in a text input.
   thumbnail cache that both filmstrips draw from.
 - `src/join/ffmpeg.ts`: the `@ffmpeg/ffmpeg` adapter the join runner uses in the browser.
 - `src/hooks/`: the video player that plays the sources back to back, keyboard shortcuts,
-  persistence, toasts, pointer drags, element width.
+  persistence, toasts, the "A new version is ready" prompt, pointer drags, element width.
 - `src/screens/`: Home and Editor screens, with the editor's timeline, transport bar, clip list,
   clip editor and Join dialog in `src/screens/editor/`; `src/components/`: shared UI (buttons,
   tooltips and key chips in `ui.module.css`, the `Tip` tooltip, dialogs, toasts). Design tokens
   (type scale, radii, control heights, colors) live in `src/index.css`.
+- `scripts/render-icons.ts`: renders the app icons in `public/icons/` from the volleyball mark.
+
+## Deploy
+
+The app is a static site with no backend, accounts or analytics: `pnpm build` writes everything
+to `dist/`. Every visitor runs their own copy in their own browser, and their videos, clips and
+sessions never leave it.
+
+To publish it on Netlify:
+
+1. Push the repo to GitHub.
+2. In Netlify, choose "Add new site", import an existing project, and pick that repository.
+3. Deploy. `netlify.toml` does the rest: the build command (`pnpm build`), the publish folder
+   (`dist`), the headers below, and the rewrite that serves `index.html` for every path, so a
+   reload of `/edit` still opens the app (on Home, since the browser cannot reopen the videos by
+   itself).
+
+Any static host that can set the two headers below and an SPA rewrite would also work.
+
+Serve it over https (Netlify does by default; localhost is fine for development): cross-origin
+isolation and `crypto.randomUUID` both need a secure context, so plain http on a LAN address gets
+neither.
+
+ffmpeg's multi-thread core needs `SharedArrayBuffer`, which browsers only allow on cross-origin
+isolated pages. `pnpm dev`, `pnpm preview` and `netlify.toml` all send the two headers that
+isolate the page:
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+On a host that cannot set headers the app still works: it falls back to the single-thread core,
+which is slower, especially in Precise mode. Since `require-corp` blocks every cross-origin
+resource that does not send a `Cross-Origin-Resource-Policy` header, any asset added later from
+another origin (a font, an image CDN) must send one or be served from the app itself. The core's
+`.js`, `.wasm` and worker files are bundled as separate assets in `dist/assets/`, so the app never
+loads them from a CDN.
+
+A visitor's first join downloads one ffmpeg core, about 32 MB. The browser caches it (everything
+in `/assets/` is served with a one-year `immutable` Cache-Control, since every file name there is
+hashed) and so does the service worker, so later joins and later visits skip the download. The
+rest of the app is under 300 KB, so the core is nearly all the bandwidth a visitor costs: a free
+tier with 100 GB a month covers about 3,000 first-time visitors, and returning visitors cost
+almost nothing.
+
+## Install as an app
+
+In Chrome or Edge, the install icon at the right end of the address bar installs VBClipper as an
+app with its own window and icon. It works offline after first use: the service worker keeps the
+app from the first visit and the ffmpeg core from the first join. When a new version is deployed,
+a toast says "A new version is ready" with a Reload button. Nothing reloads until you press it,
+so an update never interrupts a join.
 
 ## License
 
