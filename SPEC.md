@@ -28,6 +28,8 @@ decisions. If something here is impossible, say so in the report instead of impr
 4. Desktop look: denser, squarer controls so the editor reads as a desktop tool, not a phone
    app. Details in "Phase 4: Desktop look" below.
 5. Accurate progress for opening videos and for Join. Details in "Phase 5: Progress" below.
+6. Hardening, cleanup and stuck-path fixes from the two audits. Details in "Phase 6: Hardening"
+   below.
 
 ## Screens
 
@@ -298,8 +300,8 @@ modal.
 
 - `src/lib/join/plan.ts`: pure functions. `planSegments(clips)`, `segmentArgs(mode, seg, i, input)`,
   `concatListContent(n)`, `concatArgs(output)`, `outputFileName(videoName)`,
-  `estimateOutputBytes(segments, fileSize, duration)`, `estimateSeconds(mode, segments, rate)`,
-  `weightedProgress(segments, index, ratio)`. Vitest covers each.
+  `estimateOutputBytes(segments, fileSize, duration)`, `estimateSeconds(mode, segments, rate)`.
+  Vitest covers each. (Overall progress moved to `src/lib/join/progress.ts` in Phase 5.)
 - `src/lib/join/runner.ts`: the orchestrator. Takes an `FFmpegLike` interface (load, mount,
   exec, readFile, deleteFile, writeFile, on, terminate) so the unit test uses a fake that records
   calls and emits progress; the real adapter in `src/join/ffmpeg.ts` wraps `@ffmpeg/ffmpeg`.
@@ -644,3 +646,136 @@ comes from measured speed, not a guess. Where this conflicts with "Join dialog" 
   must be within 30% of the actual remaining wall time. Run Fast once warm: no download phase,
   remaining time shown. Reload and confirm the Precise card's estimate uses the learned rate.
   Open a video from Home and confirm the "Opening…" state, and watch a block header count frames.
+
+## Phase 6: Hardening
+
+Settled. Two read-only audits (stuck paths; cleanup and hardening) ran against the Phase 5 tree.
+Every item below was confirmed in code. No visual or interaction redesign: fixes only, plus the
+accessibility items named here. Where this conflicts with earlier sections, this wins.
+
+### Stuck paths
+
+- **ffmpeg never waits forever.** The single-thread core load races a 30 s timeout and fails
+  with `JoinError('ffmpeg did not start')`. During `cut`, `concat` and `save`, a watchdog fails
+  the join with `JoinError('ffmpeg stopped responding')` and terminates the worker when no `log`
+  or `progress` event arrives for 120 s. Each `reader.read()` of the core download races a 30 s
+  timer and fails with `JoinError('The download stalled')`. All three land in the existing error
+  state (log tail, Copy log, Try Precise where it applies). Unit tests with fake timers for each.
+- **Stop before the core starts.** `signal.throwIfAborted()` runs immediately before every
+  `ffmpeg.load(...)`, and the library's `load(config, { signal })` form is used so an abort in the
+  gap between the last byte and the LOAD message rejects the load.
+- **Back and Forward never lose clips.** A `popstate` that leaves `/edit` is treated exactly like
+  the Home button: the editor saves, `input` is cleared, Home shows Continue Session. Forward
+  therefore lands on Home, never on a stale editor. Test the App route reducer if one is extracted.
+- **Timeline drags always end.** Strip scrubs, trims and header reorders end (cancelled) on
+  `lostpointercapture` not caused by our own release, and on window `blur`. Escape during a strip
+  trim restores the clip and keeps it selected (stop propagation), matching the trim strip. One
+  `usePointerDrag` hook in `src/hooks/` owns capture, release, pointerId matching, Escape,
+  `lostpointercapture` and `blur` for the Timeline and the ClipEditor; each caller supplies only
+  `onMove`, `onCommit`, `onCancel`.
+- **Thumbnail extractor bounds.** `ready` resolves false after 15 s or on `dispose()`; after
+  `ready`, an `error` on the hidden video drains both queues through `onMiss`, so a file that
+  becomes unreadable costs no more than one timeout.
+- **Memory ceiling.** `MAX_OUTPUT_BYTES` stays 1.5 GB as the hard block. From 500 MB the summary
+  adds "Large output: the browser may run out of memory. Precise mode makes a smaller file." The
+  watchdog above turns a dead worker into the error "ffmpeg stopped responding, usually because
+  the browser ran out of memory. Try fewer clips or Precise mode."
+- **Continue Session dead end.** `loadAll` reports the ids that failed to open; they are removed
+  from `found` before the error shows, so the user can pick again or open without them.
+- **Error boundary.** `src/components/ErrorBoundary.tsx` wraps `<Editor>` in `App.tsx`: on a
+  render error it shows "Something went wrong. Your clips are saved." with the error message in a
+  collapsed details block and a "Back to Home" button that navigates to `/`.
+- **Save order.** `saveSession` writes the new key first, then removes the others.
+- **Hidden tab progress.** Event coalescing falls back to a 250 ms timer while `document.hidden`,
+  so a join in a background tab still updates when the tab returns.
+
+### Hardening
+
+- `newId()` falls back to a random 128-bit hex string when `crypto.randomUUID` is missing
+  (plain-http LAN hosting).
+- **Undo toasts undo that change.** Deleting a clip or removing a source records the history
+  length; the toast's Undo dispatches `undo` only if history is unchanged, otherwise a new
+  `restoreClip(clip)` or `restoreSource(source, index, clips)` action re-inserts exactly what was
+  removed. Reducer tests for both.
+- **Dialog keys.** The Dialog no longer swallows every key at the window. `useEditorShortcuts`
+  takes `disabled: boolean`, true while any dialog is open; the Dialog handles Escape on its own
+  element. Focus: trap Tab inside the dialog, focus the primary action on open (Join N clips, or
+  Done), and return focus to the opener on close.
+- **Backdrop close** fires only when both `pointerdown` and `pointerup` land on the backdrop, so
+  selecting log text and releasing outside does not close the dialog.
+- **Frame cache eviction.** `ThumbnailStore.retain` drops frames of sources no longer retained,
+  and the cache is capped at 2,000 frames, least recently requested evicted first.
+- **Playback error mid-session.** A `<video>` error after a source has loaded pauses and shows the
+  toast "Playback error in <name>", staying in the editor; only a failure to load the first source
+  still exits to Home with the unplayable message.
+- Replace the `forEach` narrowing cast in `Timeline.tsx` with a `for...of` loop and the
+  `HTMLElement` cast in `useEditorShortcuts` with `instanceof`.
+
+### Cleanup
+
+- Remove: the `@ffmpeg/util` dependency and its `optimizeDeps.exclude` entry; the `addClip`
+  reducer action (session tests build fixtures through `load` and `markStart`/`markEnd`);
+  `weightedProgress` and its tests; `clipsOverlap`; `sameVideo`; `FRAME_DURATION`;
+  `--color-accent-soft`; the stale add-clip comment in `clips.ts`; the `data-testid` attributes;
+  the `stage` test-only surface by deriving `JoinEvent.phase` from the model's stage
+  (`fallback` stays the one hand-set event).
+- Collapse: one `Filmstrip` component in `src/components/` with its own CSS module used by the
+  Timeline and the ClipEditor; one `useElementWidth(ref, settle?)` hook replacing `useWidth` and
+  `useLaidOutWidth`; one `undoToast(message, undo)` helper; the Editor's duplicated
+  seek/prev/next handler triple defined once; `ui.textButton` replacing the Dialog `.done` and
+  Toasts `.action` styles; `clamp` from `clips.ts` used in place of inline `Math.min(Math.max())`.
+- Exports used only inside their own module lose `export` (the audit's list: scrubber, trimmer,
+  plan, runner, progress and ffmpeg constants).
+
+### Build and config
+
+- `tsconfig.app.json`: `strict: true` explicit, `exactOptionalPropertyTypes: true`,
+  `noUncheckedIndexedAccess: true`, with every resulting error fixed properly (no `!`
+  assertions to silence them).
+- ESLint: `tseslint.configs.recommendedTypeChecked` with `parserOptions.projectService: true`,
+  so floating and misused promises are errors. Fix what it finds.
+- `package.json`: scripts `typecheck` (`tsc -b`), `format:check` (`prettier --check .`),
+  `lint` with `--max-warnings 0`; `packageManager` pinned to the installed pnpm and `engines.node`
+  to the installed major.
+- README: hosting must be https (cross-origin isolation and `crypto.randomUUID` need a secure
+  context); COEP `require-corp` blocks any future cross-origin asset without a CORP header; the
+  tests sentence names `src/join` and `src/playable.test.ts` too.
+
+### Tests
+
+- New: `parseSavedSession` negatives (garbage JSON, missing fields, non-finite numbers, unknown
+  version, wrong `sourceId` type); `keptPlayhead` moved to `lib/sequence.ts` and tested;
+  `matchSavedSources(session, found, files)` extracted from Home to `lib/` and tested
+  (mismatch only for a one-source save with no match, auto-open when every source is found, "Open
+  without them" only once something matched); `dispatchKey` and `isTextInput` exported from a
+  `lib/keys.ts` and tested (key to handler, Space ignores repeat, Cmd+Z vs Shift+Cmd+Z, ignored in
+  text inputs); `SourceFiles.retain` revokes only dropped ids; the JoinDialog event filter
+  extracted as a pure function and tested.
+- Replace the eight-event exact table in `runner.test.ts` with one weighting assertion (the
+  concat share) and keep the monotonicity test.
+
+### Accessibility
+
+- **Keyboard trim.** The trim strip (`role="group"`) is focusable (`tabIndex 0`). While it has
+  focus, ← / → move the start edge by 0.1 s and Shift+← / Shift+→ move the end edge, through the
+  same `trimClip` validation and `updateClip`; its tooltip names these keys. No other new keys.
+- **Clips list**: drop the `listbox`/`option` roles; each row is a `<button>` (Enter selects,
+  double-click previews as today) with the trash as a sibling button, so rows are reachable by Tab.
+- **Timeline strip**: remove `role="slider"` and mark the strip `aria-hidden`; the keyboard seek
+  and clip navigation remain the accessible path. No keyboard reorder in this phase.
+- **Live regions**: the Join done block gets `role="status"`; a visually hidden status span
+  announces phase changes only (never the per-frame byte label).
+- **Speed control**: roving tabindex (one tab stop, arrows move), per the ARIA radio pattern.
+- **Contrast**: new token `--color-text-secondary-raised: #a1a1a6` for secondary text on
+  `--color-surface-raised` (mode descriptions, kbd chips in tooltips, disabled plus glyph, row
+  trash icon).
+
+### Verification
+
+- Whole suite, `lint`, `typecheck`, `format:check`, build. Both cores still separate assets.
+- Browser (pane for keys and DOM, headless Chrome for anything needing a real pointer or a Join
+  with downloads denied): Back then Forward from the editor shows Home with Continue Session and
+  the clip count intact; a strip trim cancelled by Escape keeps the clip selected and unchanged;
+  Stop pressed during "Starting ffmpeg" returns to idle; an unhandled render error (temporarily
+  thrown from a component in a scratch branch, not committed) shows the boundary screen; Tab from
+  the Join dialog's last control wraps to its first; the keyboard trim moves an edge by 0.1 s.
