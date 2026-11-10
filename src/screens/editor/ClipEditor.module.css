@@ -41,6 +41,8 @@
   margin: 0 -8px;
   padding: 0 8px;
   touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
   user-select: none;
   cursor: pointer;
 }
@@ -104,7 +106,7 @@
 .handle::after {
   content: '';
   position: absolute;
-  left: 3px;
+  left: calc(50% - 1px);
   top: 50%;
   width: 2px;
   height: 16px;
@@ -155,10 +157,37 @@
   text-align: left;
 }
 
+/* Touch only, in place of the keyboard hint. */
+.caption {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-caption);
+}
+
 .actions {
   display: flex;
   justify-content: space-between;
   gap: 8px;
+}
+
+/* Touch: 12px handles, with the strip's side room and the time labels moved out to match. */
+@media (pointer: coarse) {
+  .strip {
+    margin: 0 -12px;
+    padding: 0 12px;
+  }
+
+  .handle {
+    width: 12px;
+  }
+
+  .labelStart {
+    left: clamp(0px, calc(var(--x) - 68px), calc(100% - 124px));
+  }
+
+  .labelEnd {
+    left: clamp(68px, calc(var(--x) + 12px), calc(100% - 56px));
+  }
 }
 
 @keyframes enter {

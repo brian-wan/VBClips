@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef } from 'react'
 import { Trash } from '../../components/Icons'
 import { clipDuration, type Clip } from '../../lib/clips'
+import { useCoarsePointer } from '../../hooks/useCoarsePointer'
 import { formatTime, formatTimePrecise } from '../../lib/time'
 import styles from './ClipsList.module.css'
 
@@ -24,7 +25,10 @@ export const ClipsList = memo(function ClipsList({
   onPlay,
   onDelete,
 }: Props) {
+  const coarse = useCoarsePointer()
   const listRef = useRef<HTMLUListElement>(null)
+  /** How the latest press on a row came in: a tap on the selected row plays it. */
+  const pressedWith = useRef('')
 
   useEffect(() => {
     if (!selectedId) return
@@ -43,7 +47,11 @@ export const ClipsList = memo(function ClipsList({
       </header>
 
       {clips.length === 0 ? (
-        <p className={styles.empty}>No clips yet. Press Space to mark the start of a point.</p>
+        <p className={styles.empty}>
+          {coarse
+            ? 'No clips yet. Tap Mark at the start of a point.'
+            : 'No clips yet. Press Space to mark the start of a point.'}
+        </p>
       ) : (
         <ul ref={listRef} className={styles.list} aria-label="Clips">
           {clips.map((clip, i) => (
@@ -56,8 +64,19 @@ export const ClipsList = memo(function ClipsList({
                 type="button"
                 className={styles.select}
                 aria-current={clip.id === selectedId ? 'true' : undefined}
-                onClick={() => onSelect(clip)}
-                onDoubleClick={() => onPlay(clip)}
+                onPointerDown={(e) => {
+                  pressedWith.current = e.pointerType
+                }}
+                onClick={() => {
+                  const tapped = pressedWith.current === 'touch' || pressedWith.current === 'pen'
+                  pressedWith.current = ''
+                  if (tapped && clip.id === selectedId) onPlay(clip)
+                  else onSelect(clip)
+                }}
+                // A double tap is two taps: the second already played the clip.
+                onDoubleClick={() => {
+                  if (!coarse) onPlay(clip)
+                }}
                 title="Click to select, double-click to play this clip"
               >
                 <span className={styles.name}>Clip {i + 1}</span>

@@ -1,4 +1,5 @@
 .button {
+  composes: touchTarget;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -65,6 +66,7 @@
 }
 
 .iconButton {
+  composes: touchTarget;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -97,6 +99,7 @@
 }
 
 .linkButton {
+  composes: touchTarget;
   border: none;
   background: none;
   padding: 4px;
@@ -118,6 +121,7 @@
 
 /* An accent text action: Done in dialogs, Undo in toasts. */
 .textButton {
+  composes: touchTarget;
   height: var(--control-height);
   padding: 0 12px;
   border: none;
@@ -228,6 +232,23 @@
   left: auto;
   right: 0;
   transform: none;
+}
+
+/*
+ * Touch: every control takes at least a 44×44 hit area. A transparent ::before grows the target
+ * around the smaller visual; `min(0px, …)` leaves a side that is already 44px or more alone.
+ * Controls outside this file compose it.
+ */
+@media (pointer: coarse) {
+  .touchTarget {
+    position: relative;
+  }
+
+  .touchTarget::before {
+    content: '';
+    position: absolute;
+    inset: min(0px, calc(50% - 22px));
+  }
 }
 
 .spin {

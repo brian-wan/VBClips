@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Clip } from './clips'
+import { toleranceFor } from './pointer'
 import { edgeTime, hitTest, percentOf, timeAtX, trimClip, xOfTime } from './scrubber'
 
 const clip = (id: string, start: number, end: number, sourceId = 's'): Clip => ({
@@ -40,6 +41,18 @@ describe('hitTest', () => {
     expect(hitTest({ ...input, x: 807 })).toEqual({ kind: 'handle', edge: 'end' })
     expect(hitTest({ ...input, x: 750 })).toEqual({ kind: 'clip', id: 'c' })
     expect(hitTest({ ...input, x: 690 })).toEqual({ kind: 'track' })
+  })
+
+  it('grabs the handles within 22 px and the playhead within 12 px on touch', () => {
+    const touch = { ...base, clips, selectedId: 'c', tolerance: toleranceFor(true) }
+    expect(hitTest({ ...touch, x: 679 })).toEqual({ kind: 'handle', edge: 'start' })
+    expect(hitTest({ ...touch, x: 822 })).toEqual({ kind: 'handle', edge: 'end' })
+    expect(hitTest({ ...touch, x: 677 })).toEqual({ kind: 'track' })
+    expect(hitTest({ ...touch, x: 511 })).toEqual({ kind: 'playhead' })
+    expect(hitTest({ ...touch, x: 513 })).toEqual({ kind: 'track' })
+    expect(hitTest({ ...base, clips, x: 511, tolerance: toleranceFor(false) })).toEqual({
+      kind: 'track',
+    })
   })
 
   it('picks the nearer handle on a clip shorter than two hit widths', () => {

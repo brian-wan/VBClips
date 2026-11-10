@@ -51,6 +51,9 @@
 .header {
   position: relative;
   display: flex;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -130,6 +133,9 @@
 .strip {
   position: relative;
   overflow: hidden;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
   border-radius: 4px;
   background: var(--color-surface-raised);
   touch-action: none;
@@ -177,7 +183,7 @@
 .handle::after {
   content: '';
   position: absolute;
-  left: 3px;
+  left: calc(50% - 1px);
   top: 50%;
   width: 2px;
   height: 12px;
@@ -295,4 +301,29 @@
   color: var(--color-text-secondary);
   font-size: var(--font-caption);
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Touch: 12px trim handles (the hit test takes 22px either side), and the × always shown with a
+ * 44px target. The target grows upward, away from the filmstrip, so a drag near a block's end
+ * never removes the video.
+ */
+@media (pointer: coarse) {
+  .handle {
+    width: 12px;
+  }
+
+  .remove {
+    position: relative;
+    opacity: 1;
+  }
+
+  .remove::before {
+    content: '';
+    position: absolute;
+    top: -26px;
+    right: -14px;
+    bottom: -2px;
+    left: -14px;
+  }
 }

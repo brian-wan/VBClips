@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { toleranceFor } from './pointer'
 import { handleAt, shouldRecenter, timeAtX, trimWindow, xOfTime } from './trimmer'
 
 describe('trimWindow', () => {
@@ -57,6 +58,16 @@ describe('handleAt', () => {
   it('finds the handle just outside each clip edge', () => {
     expect(handleAt(116, 300, window, clip)).toBe('start')
     expect(handleAt(184, 300, window, clip)).toBe('end')
+  })
+
+  it('draws 12px handles and grabs them within 22px on touch', () => {
+    const touch = toleranceFor(true)
+    // The start handle's centre is 6px left of the clip start at x = 120.
+    expect(handleAt(93, 300, window, clip, touch)).toBe('start')
+    expect(handleAt(90, 300, window, clip, touch)).toBeNull()
+    expect(handleAt(207, 300, window, clip, touch)).toBe('end')
+    expect(handleAt(150, 300, window, clip, touch)).toBeNull()
+    expect(handleAt(93, 300, window, clip, toleranceFor(false))).toBeNull()
   })
 
   it('returns null away from the handles', () => {

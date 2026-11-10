@@ -7,11 +7,8 @@ import {
   roundTime,
   type Span,
 } from './clips'
+import { pointerTolerance, type PointerTolerance } from './pointer'
 
-/** Pointer distance in px from a selected clip's edge that still grabs its trim handle. */
-const HANDLE_HIT_PX = 8
-/** Pointer distance in px from the playhead that grabs it for scrubbing. */
-const PLAYHEAD_HIT_PX = 6
 /** Extra px around very short clip segments so they stay clickable. */
 const CLIP_HIT_SLOP_PX = 2
 
@@ -44,6 +41,8 @@ type HitInput = {
   selectedId: string | null
   /** Local playhead time, or null when the playhead is in another source. */
   playhead: number | null
+  /** Handle and playhead grab distances; the current pointer's when left out. */
+  tolerance?: PointerTolerance
 }
 
 /**
@@ -57,6 +56,7 @@ export function hitTest({
   clips,
   selectedId,
   playhead,
+  tolerance = pointerTolerance(),
 }: HitInput): ScrubberTarget {
   if (width <= 0 || duration <= 0) return { kind: 'track' }
   const toX = (t: number) => xOfTime(t, width, duration)
@@ -67,12 +67,12 @@ export function hitTest({
     const endX = toX(selected.end)
     const fromStart = Math.abs(x - startX)
     const fromEnd = Math.abs(x - endX)
-    if (Math.min(fromStart, fromEnd) <= HANDLE_HIT_PX) {
+    if (Math.min(fromStart, fromEnd) <= tolerance.handle) {
       return { kind: 'handle', edge: fromStart <= fromEnd ? 'start' : 'end' }
     }
   }
 
-  if (playhead !== null && Math.abs(x - toX(playhead)) <= PLAYHEAD_HIT_PX) {
+  if (playhead !== null && Math.abs(x - toX(playhead)) <= tolerance.playhead) {
     return { kind: 'playhead' }
   }
 

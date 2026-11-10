@@ -15,6 +15,7 @@ import { edgeTime, trimClip, type TrimEdge } from '../../lib/scrubber'
 import type { SourceMeta } from '../../lib/session'
 import { formatTimePrecise } from '../../lib/time'
 import { handleAt, shouldRecenter, timeAtX, trimWindow, xOfTime } from '../../lib/trimmer'
+import { useCoarsePointer } from '../../hooks/useCoarsePointer'
 import { useElementWidth } from '../../hooks/useElementWidth'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { thumbnails } from '../../media/thumbnails'
@@ -62,6 +63,7 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
   },
   ref,
 ) {
+  const coarse = useCoarsePointer()
   const trackRef = useRef<HTMLDivElement>(null)
   const width = useElementWidth(trackRef)
   const [drag, setDrag] = useState<Drag | null>(null)
@@ -154,7 +156,7 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
 
       <div className={styles.trim}>
         <div
-          className={`${styles.strip} ${drag ? '' : ui.tip}`}
+          className={`${styles.strip} ${drag || coarse ? '' : ui.tip}`}
           style={{ cursor: handleCursor }}
           {...trimDrag.props}
           onPointerDown={onPointerDown}
@@ -166,14 +168,16 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
           aria-label={`Trim clip ${number}`}
           aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight"
         >
-          <span className={ui.tipBubble} aria-hidden="true">
-            Start
-            <kbd className={ui.kbd}>←</kbd>
-            <kbd className={ui.kbd}>→</kbd>
-            End
-            <kbd className={ui.kbd}>Shift ←</kbd>
-            <kbd className={ui.kbd}>Shift →</kbd>
-          </span>
+          {!coarse && (
+            <span className={ui.tipBubble} aria-hidden="true">
+              Start
+              <kbd className={ui.kbd}>←</kbd>
+              <kbd className={ui.kbd}>→</kbd>
+              End
+              <kbd className={ui.kbd}>Shift ←</kbd>
+              <kbd className={ui.kbd}>Shift →</kbd>
+            </span>
+          )}
           <div ref={trackRef} className={styles.track}>
             <Filmstrip
               sourceId={source.id}
@@ -226,6 +230,7 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
             {formatTimePrecise(shown.end)}
           </span>
         </div>
+        {coarse && <p className={styles.caption}>Drag the handles to trim</p>}
       </div>
 
       <div className={styles.actions}>

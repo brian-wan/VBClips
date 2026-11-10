@@ -1,14 +1,11 @@
 import { clamp, type Span } from './clips'
+import { pointerTolerance, type PointerTolerance } from './pointer'
 import type { TrimEdge } from './scrubber'
 
 /** Seconds of context shown on each side of the clip, at least. */
 const MIN_PAD = 2
 /** A handle closer than this share of the window to its edge recenters the window on drop. */
 const RECENTER_SHARE = 0.1
-/** Width of each orange handle; the handles sit just outside the clip region. */
-const TRIM_HANDLE_PX = 8
-/** Pointer distance from a handle's centre that still grabs it. */
-const TRIM_HIT_PX = 12
 
 /** The stretch of the source the trim strip shows: the clip with padding, inside the source. */
 export function trimWindow(clip: Span, duration: number): Span {
@@ -35,11 +32,20 @@ export function shouldRecenter(clip: Span, window: Span): boolean {
   return clip.start - window.start < margin || window.end - clip.end < margin
 }
 
-/** The handle under `x`, if any. The start handle sits left of the clip, the end handle right. */
-export function handleAt(x: number, width: number, window: Span, clip: Span): TrimEdge | null {
-  const half = TRIM_HANDLE_PX / 2
+/**
+ * The handle under `x`, if any. The start handle sits left of the clip, the end handle right,
+ * each `tolerance.trimHandleWidth` wide.
+ */
+export function handleAt(
+  x: number,
+  width: number,
+  window: Span,
+  clip: Span,
+  tolerance: PointerTolerance = pointerTolerance(),
+): TrimEdge | null {
+  const half = tolerance.trimHandleWidth / 2
   const fromStart = Math.abs(x - (xOfTime(clip.start, width, window) - half))
   const fromEnd = Math.abs(x - (xOfTime(clip.end, width, window) + half))
-  if (Math.min(fromStart, fromEnd) > TRIM_HIT_PX) return null
+  if (Math.min(fromStart, fromEnd) > tolerance.trimHandle) return null
   return fromStart <= fromEnd ? 'start' : 'end'
 }

@@ -66,6 +66,16 @@ button {
   outline-offset: 2px;
 }
 
+/* Touch: a double tap on a control must not zoom the page. */
+@media (pointer: coarse) {
+  button,
+  a,
+  label,
+  input {
+    touch-action: manipulation;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -106,6 +106,7 @@
 }
 
 .trash {
+  composes: touchTarget from '../../components/ui.module.css';
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -145,4 +146,23 @@
   color: var(--color-text-secondary);
   font-size: var(--font-body);
   line-height: 1.4;
+}
+
+/*
+ * Touch: 44px rows. With no hover to reveal it, the trash shows on the selected row only, and the
+ * hidden ones cannot be hit by accident.
+ */
+@media (pointer: coarse) {
+  .row {
+    height: 44px;
+  }
+
+  .trash {
+    visibility: hidden;
+  }
+
+  .row.selected .trash {
+    visibility: visible;
+    opacity: 1;
+  }
 }

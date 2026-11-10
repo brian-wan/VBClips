@@ -9,6 +9,7 @@ import {
 } from '../../components/Icons'
 import { Tip } from '../../components/Tip'
 import ui from '../../components/ui.module.css'
+import { useCoarsePointer } from '../../hooks/useCoarsePointer'
 import { SPEEDS } from '../../lib/speed'
 import styles from './TransportBar.module.css'
 
@@ -53,6 +54,7 @@ export function TransportBar({
   onSpeed,
   onShowShortcuts,
 }: Props) {
+  const coarse = useCoarsePointer()
   const speedButtons = useRef<(HTMLButtonElement | null)[]>([])
   // The speed group is one tab stop, on the checked segment; arrows move the check and focus.
   const onSpeedKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -143,9 +145,15 @@ export function TransportBar({
           <span className={marking ? styles.stop : styles.ring} />
           <Tip label={marking ? 'Mark end' : 'Mark start'} keys={['Space']} />
         </button>
-        <kbd className={ui.kbd} aria-hidden="true">
-          Space
-        </kbd>
+        {coarse ? (
+          <span className={styles.caption} aria-hidden="true">
+            Mark
+          </span>
+        ) : (
+          <kbd className={ui.kbd} aria-hidden="true">
+            Space
+          </kbd>
+        )}
       </div>
 
       <div className={`${styles.cluster} ${styles.end}`}>
@@ -173,15 +181,18 @@ export function TransportBar({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className={`${iconTip} ${ui.tipEnd}`}
-          aria-label="Keyboard shortcuts"
-          onClick={onShowShortcuts}
-        >
-          <span className={styles.question}>?</span>
-          <Tip label="Keyboard shortcuts" keys={['?']} />
-        </button>
+        {/* Nothing to list without a keyboard; the ? key still opens it. */}
+        {!coarse && (
+          <button
+            type="button"
+            className={`${iconTip} ${ui.tipEnd}`}
+            aria-label="Keyboard shortcuts"
+            onClick={onShowShortcuts}
+          >
+            <span className={styles.question}>?</span>
+            <Tip label="Keyboard shortcuts" keys={['?']} />
+          </button>
+        )}
       </div>
     </div>
   )

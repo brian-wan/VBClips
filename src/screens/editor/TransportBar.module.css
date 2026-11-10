@@ -57,6 +57,7 @@
 }
 
 .navArrow {
+  composes: touchTarget from '../../components/ui.module.css';
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -74,6 +75,7 @@
 }
 
 .navLabel {
+  composes: touchTarget from '../../components/ui.module.css';
   min-width: 72px;
   padding: 0 8px;
   border-left: 1px solid var(--color-separator);
@@ -110,6 +112,7 @@
 }
 
 .mark {
+  composes: touchTarget from '../../components/ui.module.css';
   display: flex;
   align-items: center;
   justify-content: center;
@@ -168,6 +171,7 @@
 }
 
 .segment {
+  composes: touchTarget from '../../components/ui.module.css';
   min-width: 40px;
   padding: 0 8px;
   border-radius: 2px;
@@ -186,4 +190,24 @@
   font-size: var(--font-heading);
   font-weight: 600;
   line-height: 1;
+}
+
+/* Under the mark button on touch, where there is no Space key to name. */
+.caption {
+  color: var(--color-text-secondary);
+  font-size: var(--font-micro);
+  font-weight: 500;
+  line-height: 16px;
+}
+
+/* Touch: 44px targets that do not overlap, so the neighbours keep space between them. */
+@media (pointer: coarse) {
+  .cluster {
+    gap: 12px;
+  }
+
+  .navArrow,
+  .segment {
+    min-width: 44px;
+  }
 }
