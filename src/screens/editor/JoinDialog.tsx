@@ -263,6 +263,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
                 className={ui.primary}
                 disabled={tooLarge || segments.length === 0}
                 onClick={() => void start(mode)}
+                autoFocus
               >
                 Join {clips.length} {clipWord}
               </button>
@@ -298,7 +299,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
               >
                 Save again
               </button>
-              <button type="button" className={ui.primary} onClick={onClose}>
+              <button type="button" className={ui.primary} onClick={onClose} autoFocus>
                 Done
               </button>
             </div>
@@ -328,6 +329,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
                 type="button"
                 className={state.failure.mode === 'fast' ? ui.secondary : ui.primary}
                 onClick={() => setState({ kind: 'setup' })}
+                autoFocus={state.failure.mode !== 'fast'}
               >
                 Back
               </button>
@@ -339,6 +341,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
                     setMode('precise')
                     void start('precise')
                   }}
+                  autoFocus
                 >
                   Try Precise
                 </button>
@@ -404,7 +407,7 @@ function Progress({
         {confirmingStop ? (
           <>
             <span className={styles.confirm}>Stop joining?</span>
-            <button type="button" className={ui.secondary} onClick={onKeepGoing}>
+            <button type="button" className={ui.secondary} onClick={onKeepGoing} autoFocus>
               Keep joining
             </button>
             <button type="button" className={ui.destructive} onClick={onConfirmStop}>
@@ -412,7 +415,7 @@ function Progress({
             </button>
           </>
         ) : (
-          <button type="button" className={ui.secondary} onClick={onStop}>
+          <button type="button" className={ui.secondary} onClick={onStop} autoFocus>
             Stop
           </button>
         )}

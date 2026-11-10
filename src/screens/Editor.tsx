@@ -19,10 +19,17 @@ import { useToasts } from '../hooks/useToasts'
 import { useVideoPlayer } from '../hooks/useVideoPlayer'
 import { findOverlappingIds, totalClippedDuration, type Clip } from '../lib/clips'
 import { fingerprint } from '../lib/fingerprint'
+import { newId } from '../lib/id'
 import { currentClipIndex, nextClipIndex, prevClipIndex } from '../lib/navigation'
 import { advanceOpening, openingLabel, startOpening, type Opening } from '../lib/opening'
 import { toSequence } from '../lib/sequence'
-import { initialSession, markEndProblem, sessionReducer } from '../lib/session'
+import {
+  initialSession,
+  markEndProblem,
+  sessionReducer,
+  type SessionAction,
+  type Snapshot,
+} from '../lib/session'
 import { nextSpeed } from '../lib/speed'
 import { formatTime } from '../lib/time'
 import { loadSource } from '../media/loadSource'
@@ -45,7 +52,6 @@ type Props = EditorInput & {
 
 type Flash = { id: number; playing: boolean }
 
-const newId = () => crypto.randomUUID()
 const hasFiles = (e: DragEvent) => [...e.dataTransfer.types].includes('Files')
 
 export function Editor({
@@ -69,6 +75,10 @@ export function Editor({
     return store
   })
   const { sources, clips, selectedId, openStart } = state
+  const stateRef = useRef(state)
+  useEffect(() => {
+    stateRef.current = state
+  })
 
   const urls = useMemo(
     () =>
@@ -120,6 +130,8 @@ export function Editor({
   const [droppingFiles, setDroppingFiles] = useState(false)
   const [flash, setFlash] = useState<Flash | null>(null)
   const resumeAfterDrag = useRef(false)
+  /** Set once any source has loaded; a later playback error then stays in the editor. */
+  const playedSomething = useRef(false)
   const lastPlayhead = useRef(initialPlayhead)
   useEffect(() => {
     if (player.duration > 0) lastPlayhead.current = player.currentTime
@@ -208,26 +220,55 @@ export function Editor({
     }
   }
 
+  const undoToast = useCallback(
+    (message: string, undo: () => void) =>
+      showToast(message, { timeout: 5000, action: { label: 'Undo', onClick: undo } }),
+    [showToast],
+  )
+
+  /**
+   * The toast's Undo for a removal made from `before`: a plain undo while that removal is still
+   * the latest change, otherwise `restore`, which puts back exactly what was removed without
+   * reverting anything done since.
+   */
+  const undoRemoval = useCallback(
+    (before: Snapshot, restore: SessionAction) => () => {
+      const latest = stateRef.current.past.at(-1)
+      const unchanged = latest?.sources === before.sources && latest.clips === before.clips
+      dispatch(unchanged ? { type: 'undo' } : restore)
+    },
+    [],
+  )
+
   const deleteClip = useCallback(
     (clip: Clip) => {
       const number = clips.findIndex((c) => c.id === clip.id) + 1
       dispatch({ type: 'deleteClip', id: clip.id })
-      showToast(`Clip ${number} deleted`, {
-        timeout: 5000,
-        action: { label: 'Undo', onClick: () => dispatch({ type: 'undo' }) },
-      })
+      undoToast(
+        `Clip ${number} deleted`,
+        undoRemoval({ sources, clips }, { type: 'restoreClip', clip }),
+      )
     },
-    [clips, showToast],
+    [clips, sources, undoToast, undoRemoval],
   )
 
   const removeSource = (id: string) => {
-    const source = sources.find((s) => s.id === id)
+    const index = sources.findIndex((s) => s.id === id)
+    const source = sources[index]
     if (!source) return
     dispatch({ type: 'removeSource', id })
-    showToast(`${source.name} removed`, {
-      timeout: 5000,
-      action: { label: 'Undo', onClick: () => dispatch({ type: 'undo' }) },
-    })
+    undoToast(
+      `${source.name} removed`,
+      undoRemoval(
+        { sources, clips },
+        {
+          type: 'restoreSource',
+          source,
+          index,
+          clips: clips.filter((c) => c.sourceId === id),
+        },
+      ),
+    )
   }
 
   const addFiles = async (picked: File[]) => {
@@ -310,25 +351,28 @@ export function Editor({
     if (resumeAfterDrag.current) play()
   }, [play])
 
-  useEditorShortcuts({
-    mark,
-    togglePlay,
-    seekBy: (seconds) => player.seek(now() + seconds),
-    prevClip: () => goToClip(prevClipIndex(sequenceClips, now(), selectedId)),
-    nextClip: () => goToClip(nextClipIndex(sequenceClips, now(), selectedId)),
-    cycleSpeed: () => setSpeed(nextSpeed),
-    editSelected: openInEditor,
-    deleteSelected: () => {
-      if (selectedClip) deleteClip(selectedClip)
+  useEditorShortcuts(
+    {
+      mark,
+      togglePlay,
+      seekBy: (seconds) => player.seek(now() + seconds),
+      prevClip: () => goToClip(prevClipIndex(sequenceClips, now(), selectedId)),
+      nextClip: () => goToClip(nextClipIndex(sequenceClips, now(), selectedId)),
+      cycleSpeed: () => setSpeed(nextSpeed),
+      editSelected: openInEditor,
+      deleteSelected: () => {
+        if (selectedClip) deleteClip(selectedClip)
+      },
+      undo: () => dispatch({ type: 'undo' }),
+      redo: () => dispatch({ type: 'redo' }),
+      escape: () => {
+        if (openStart !== null) dispatch({ type: 'cancelMark' })
+        else if (selectedId !== null) dispatch({ type: 'select', id: null })
+      },
+      showShortcuts: () => setHelpOpen(true),
     },
-    undo: () => dispatch({ type: 'undo' }),
-    redo: () => dispatch({ type: 'redo' }),
-    escape: () => {
-      if (openStart !== null) dispatch({ type: 'cancelMark' })
-      else if (selectedId !== null) dispatch({ type: 'select', id: null })
-    },
-    showShortcuts: () => setHelpOpen(true),
-  })
+    { disabled: helpOpen || joinOpen },
+  )
 
   const clipWord = clips.length === 1 ? 'Clip' : 'Clips'
 
@@ -386,8 +430,7 @@ export function Editor({
               type="button"
               className={ui.primary}
               disabled={clips.length === 0}
-              onClick={(e) => {
-                e.currentTarget.blur()
+              onClick={() => {
                 player.pause()
                 setJoinOpen(true)
               }}
@@ -421,13 +464,19 @@ export function Editor({
                 playsInline
                 preload="auto"
                 onLoadedMetadata={(e) => {
+                  playedSomething.current = true
                   e.currentTarget.defaultPlaybackRate = speed
                   e.currentTarget.playbackRate = speed
                 }}
                 onError={(e) => {
-                  if (e.currentTarget.error && currentSource) {
+                  if (!e.currentTarget.error || !currentSource) return
+                  // Only a first video that never loads sends the user back home.
+                  if (!playedSomething.current) {
                     onError(unplayableMessage(currentSource.name))
+                    return
                   }
+                  player.pause()
+                  showToast(`Playback error in ${currentSource.name}`, { timeout: 5000 })
                 }}
               />
               {speed > 1 && (

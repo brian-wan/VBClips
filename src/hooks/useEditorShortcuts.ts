@@ -39,17 +39,21 @@ const isSpace = (e: KeyboardEvent) => e.code === 'Space' || e.key === ' '
 /**
  * All editor keyboard bindings. Space always means "mark": it is swallowed on keydown and keyup
  * so it never scrolls or activates a focused button, and buttons are blurred after each click.
+ * While `disabled` (a dialog is open) every key goes to the page as usual.
  */
-export function useEditorShortcuts(handlers: EditorShortcutHandlers): void {
-  const ref = useRef(handlers)
+export function useEditorShortcuts(
+  handlers: EditorShortcutHandlers,
+  { disabled }: { disabled: boolean },
+): void {
+  const ref = useRef({ handlers, disabled })
   useEffect(() => {
-    ref.current = handlers
+    ref.current = { handlers, disabled }
   })
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isTextInput(e.target)) return
-      const h = ref.current
+      if (ref.current.disabled || isTextInput(e.target)) return
+      const h = ref.current.handlers
       const mod = e.metaKey || e.ctrlKey
 
       if (mod && e.code === 'KeyZ' && !e.altKey) {
@@ -71,13 +75,16 @@ export function useEditorShortcuts(handlers: EditorShortcutHandlers): void {
     }
 
     const onKeyUp = (e: KeyboardEvent) => {
+      if (ref.current.disabled) return
       if (isSpace(e) && !isTextInput(e.target)) e.preventDefault()
     }
 
+    // Focus inside a dialog stays put: the dialog manages it.
     const onClick = () => {
       const active = document.activeElement
-      if (active instanceof HTMLButtonElement || active?.getAttribute('role') === 'button') {
-        ;(active as HTMLElement).blur()
+      if (!(active instanceof HTMLElement) || active.closest('[role="dialog"]')) return
+      if (active instanceof HTMLButtonElement || active.getAttribute('role') === 'button') {
+        active.blur()
       }
     }
 

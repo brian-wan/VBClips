@@ -188,14 +188,14 @@ export function Timeline({
   /** The block under `clientX`, or the nearest one when the pointer is in a gap or outside. */
   const blockAt = (clientX: number) => {
     let best: { index: number; rect: DOMRect; distance: number } | null = null
-    sources.forEach((source, index) => {
+    for (const [index, source] of sources.entries()) {
       const rect = stripRefs.current.get(source.id)?.getBoundingClientRect()
-      if (!rect) return
+      if (!rect) continue
       const distance =
         clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0
       if (!best || distance < best.distance) best = { index, rect, distance }
-    })
-    return best as { index: number; rect: DOMRect; distance: number } | null
+    }
+    return best
   }
 
   const measure = (clientX: number) => {

@@ -32,6 +32,10 @@ export type SessionAction =
   | { type: 'addSource'; source: SourceMeta }
   | { type: 'removeSource'; id: string }
   | { type: 'moveSource'; from: number; to: number }
+  /** Puts back a deleted clip when undo would revert some later change instead. */
+  | { type: 'restoreClip'; clip: Clip }
+  /** Puts back a removed source at `index`, with the clips that went with it. */
+  | { type: 'restoreSource'; source: SourceMeta; index: number; clips: Clip[] }
   | { type: 'undo' }
   | { type: 'redo' }
 
@@ -161,6 +165,24 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
       if (from === to || from < 0 || to < 0 || from >= count || to >= count) return state
       const sources = moveSource(state.sources, from, to)
       return commit(state, { sources, clips: sortClips(state.clips, order(sources)) })
+    }
+    case 'restoreClip': {
+      const { clip } = action
+      if (state.clips.some((c) => c.id === clip.id)) return state
+      if (!state.sources.some((s) => s.id === clip.sourceId)) return state
+      return commit(state, { clips: insertClip(state.clips, clip, order(state.sources)) })
+    }
+    case 'restoreSource': {
+      const { source } = action
+      if (state.sources.some((s) => s.id === source.id)) return state
+      const sources = [...state.sources]
+      sources.splice(Math.min(Math.max(action.index, 0), sources.length), 0, source)
+      const known = new Set(state.clips.map((c) => c.id))
+      const returning = action.clips.filter((c) => c.sourceId === source.id && !known.has(c.id))
+      return commit(state, {
+        sources,
+        clips: sortClips([...state.clips, ...returning], order(sources)),
+      })
     }
     case 'undo': {
       const previous = state.past[state.past.length - 1]

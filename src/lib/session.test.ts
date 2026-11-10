@@ -249,3 +249,51 @@ describe('undo and redo', () => {
     expect(state.clips).toHaveLength(10)
   })
 })
+
+describe('restoring what an undo toast refers to', () => {
+  const marked = (state: SessionState, id: string, start: number, end: number, sourceId = a.id) =>
+    run(
+      state,
+      { type: 'markStart', sourceId, time: start },
+      { type: 'markEnd', sourceId, time: end, id },
+    )
+  const two = marked(marked(loaded, 'x', 1, 3), 'y', 10, 12)
+
+  it('puts a deleted clip back as one undo step, leaving later changes alone', () => {
+    const deleted = run(two, { type: 'deleteClip', id: 'x' })
+    const later = run(deleted, { type: 'updateClip', clip: clip('y', 10, 14) })
+    const restored = run(later, { type: 'restoreClip', clip: clip('x', 1, 3) })
+    expect(restored.clips).toEqual([clip('x', 1, 3), clip('y', 10, 14)])
+    expect(run(restored, { type: 'undo' }).clips).toEqual(later.clips)
+  })
+
+  it('does not restore a clip that is already there or whose source is gone', () => {
+    expect(run(two, { type: 'restoreClip', clip: clip('x', 1, 3) })).toBe(two)
+    expect(run(two, { type: 'restoreClip', clip: clip('z', 1, 3, b.id) })).toBe(two)
+  })
+
+  it('puts a removed source back at its place with its clips', () => {
+    const three = marked(
+      run(two, { type: 'addSource', source: b }, { type: 'addSource', source: c }),
+      'b1',
+      0,
+      2,
+      b.id,
+    )
+    const removed = run(three, { type: 'removeSource', id: b.id })
+    const later = marked(removed, 'c1', 1, 4, c.id)
+    const restored = run(later, {
+      type: 'restoreSource',
+      source: b,
+      index: 1,
+      clips: [clip('b1', 0, 2, b.id)],
+    })
+    expect(restored.sources).toEqual([a, b, c])
+    expect(restored.clips.map((x) => x.id)).toEqual(['x', 'y', 'b1', 'c1'])
+    expect(run(restored, { type: 'undo' })).toMatchObject({
+      sources: later.sources,
+      clips: later.clips,
+    })
+    expect(run(restored, { type: 'restoreSource', source: b, index: 0, clips: [] })).toBe(restored)
+  })
+})

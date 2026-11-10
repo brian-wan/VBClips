@@ -7,6 +7,8 @@ const SEEK_TIMEOUT_MS = 4000
 /** A hidden video that has not read its metadata by now never will. */
 const READY_TIMEOUT_MS = 15_000
 const JPEG_QUALITY = 0.7
+/** About 2,000 small JPEG data URLs: a few tens of MB at most. */
+const MAX_FRAMES = 2000
 
 /**
  * Off-screen holder for the extractors' videos. Chrome may stop loading data for detached,
@@ -189,9 +191,10 @@ class Extractor {
 export type FrameProgress = { done: number; total: number }
 
 class ThumbnailStore {
-  private readonly frames = new Map<string, string>()
-  /** Frames that failed twice; they count as done so progress can finish. */
-  private readonly missed = new Set<string>()
+  /** In request order, least recently requested first, so the oldest go when the cache is full. */
+  private readonly frames = new Map<string, { sourceId: string; frame: string }>()
+  /** Frames that failed twice, with their source id; they count as done for progress. */
+  private readonly missed = new Map<string, string>()
   /** The timeline's latest wanted times per source. */
   private readonly wanted = new Map<string, number[]>()
   private readonly extractors = new Map<string, Extractor>()
@@ -207,7 +210,7 @@ class ThumbnailStore {
   getVersion = () => this.version
 
   get(sourceId: string, t: number): string | undefined {
-    return this.frames.get(thumbKey(sourceId, t))
+    return this.frames.get(thumbKey(sourceId, t))?.frame
   }
 
   /** How many of `times` have a frame (or have been given up on). */
@@ -224,6 +227,7 @@ class ThumbnailStore {
   }
 
   request(sourceId: string, url: string, times: readonly number[], priority = false) {
+    this.touch(sourceId, times)
     if (!priority) {
       this.wanted.set(sourceId, [...times])
       this.scheduleNotify()
@@ -239,11 +243,12 @@ class ThumbnailStore {
         url,
         (key) => this.frames.has(key),
         (key, frame) => {
-          this.frames.set(key, frame)
+          this.frames.set(key, { sourceId, frame })
+          this.evict()
           this.scheduleNotify()
         },
         (key) => {
-          this.missed.add(key)
+          this.missed.set(key, sourceId)
           this.scheduleNotify()
         },
       )
@@ -252,13 +257,37 @@ class ThumbnailStore {
     extractor.request(times, priority)
   }
 
-  /** Stops extracting frames from sources not in `ids`; their cached frames stay. */
+  /** Stops extracting frames from sources not in `ids` and forgets their frames. */
   retain(ids: ReadonlySet<string>) {
     for (const [id, extractor] of this.extractors) {
       if (ids.has(id)) continue
       extractor.dispose()
       this.extractors.delete(id)
       this.wanted.delete(id)
+    }
+    for (const [key, { sourceId }] of this.frames) {
+      if (!ids.has(sourceId)) this.frames.delete(key)
+    }
+    for (const [key, sourceId] of this.missed) {
+      if (!ids.has(sourceId)) this.missed.delete(key)
+    }
+  }
+
+  /** Marks the frames for `times` as just requested. */
+  private touch(sourceId: string, times: readonly number[]) {
+    for (const t of times) {
+      const key = thumbKey(sourceId, t)
+      const entry = this.frames.get(key)
+      if (!entry) continue
+      this.frames.delete(key)
+      this.frames.set(key, entry)
+    }
+  }
+
+  private evict() {
+    for (const key of this.frames.keys()) {
+      if (this.frames.size <= MAX_FRAMES) return
+      this.frames.delete(key)
     }
   }
 
