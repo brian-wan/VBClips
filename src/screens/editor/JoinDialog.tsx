@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { LoadedSource } from '../../App'
 import { Dialog } from '../../components/Dialog'
 import ui from '../../components/ui.module.css'
 import { downloadUrl } from '../../download'
@@ -27,9 +28,9 @@ import { formatTime } from '../../lib/time'
 import styles from './JoinDialog.module.css'
 
 type Props = {
-  file: File
+  /** In timeline order. */
+  sources: readonly LoadedSource[]
   clips: readonly Clip[]
-  duration: number
   onClose: () => void
 }
 
@@ -58,7 +59,8 @@ const MODES: { mode: JoinMode; title: string; detail: (estimate: string) => stri
   {
     mode: 'fast',
     title: 'Fast',
-    detail: () => 'Exact to the nearest keyframe, usually within a second. Takes seconds.',
+    detail: () =>
+      'Exact to the nearest keyframe, usually within a second. Takes seconds. If videos differ, Join switches to Precise automatically.',
   },
   {
     mode: 'precise',
@@ -67,12 +69,23 @@ const MODES: { mode: JoinMode; title: string; detail: (estimate: string) => stri
   },
 ]
 
-export function JoinDialog({ file, clips, duration, onClose }: Props) {
-  const segments = useMemo(() => planSegments(clips), [clips])
+export function JoinDialog({ sources, clips, onClose }: Props) {
+  const segments = useMemo(
+    () =>
+      planSegments(
+        clips,
+        sources.map((s) => s.meta.id),
+      ),
+    [clips, sources],
+  )
+  const files = useMemo(() => sources.map((s) => s.file), [sources])
   const total = totalDuration(segments)
-  const estimatedBytes = estimateOutputBytes(segments, file.size, duration)
+  const estimatedBytes = estimateOutputBytes(
+    segments,
+    sources.map((s) => s.meta),
+  )
   const tooLarge = estimatedBytes > MAX_OUTPUT_BYTES
-  const name = outputFileName(file.name)
+  const name = outputFileName(sources[0]?.meta.name ?? 'video')
 
   const [mode, setMode] = useState<JoinMode>('fast')
   const [state, setState] = useState<State>({ kind: 'setup' })
@@ -145,7 +158,7 @@ export function JoinDialog({ file, clips, duration, onClose }: Props) {
     try {
       const blob = await runJoin({
         ffmpeg: getFFmpeg(),
-        file,
+        files,
         segments,
         mode: joinMode,
         onEvent,

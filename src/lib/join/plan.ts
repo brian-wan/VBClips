@@ -1,7 +1,8 @@
-import { mergeOverlaps, type Clip } from '../clips'
+import { groupBySource, mergeOverlaps, type Clip, type Span } from '../clips'
 
 export type JoinMode = 'fast' | 'precise'
-export type Segment = { start: number; end: number }
+/** A stretch of one source to render; `sourceIndex` is the source's position in the timeline. */
+export type Segment = Span & { sourceIndex: number }
 
 /** The output is assembled in MEMFS, so anything bigger risks running the tab out of memory. */
 export const MAX_OUTPUT_BYTES = 1.5e9
@@ -13,8 +14,23 @@ export const DEFAULT_RATE: Record<JoinMode, number> = { fast: 20, precise: 0.15 
 /** ffmpeg.wasm reports `time` in microseconds of output written. */
 const MICROSECONDS = 1_000_000
 
-export function planSegments(clips: readonly Clip[]): Segment[] {
-  return mergeOverlaps(clips).filter((seg) => seg.end > seg.start)
+/** Segments in sequence order: overlaps merged within each source, sources in timeline order. */
+export function planSegments(clips: readonly Clip[], sourceIds: readonly string[]): Segment[] {
+  const groups = groupBySource(clips)
+  return sourceIds.flatMap((id, sourceIndex) =>
+    mergeOverlaps(groups.get(id) ?? [])
+      .filter((seg) => seg.end > seg.start)
+      .map((seg) => ({ sourceIndex, ...seg })),
+  )
+}
+
+/** Where source `index` is mounted with WORKERFS. */
+export function mountPoint(index: number): string {
+  return `/in${index}`
+}
+
+export function inputPath(index: number, fileName: string): string {
+  return `${mountPoint(index)}/${fileName}`
 }
 
 export function segmentFileName(index: number): string {
@@ -30,7 +46,7 @@ const timeArg = (seconds: number) => seconds.toFixed(3)
  */
 export const PRECISE_THREADS = '4'
 
-export function segmentArgs(mode: JoinMode, seg: Segment, index: number, input: string): string[] {
+export function segmentArgs(mode: JoinMode, seg: Span, index: number, input: string): string[] {
   const cut = ['-ss', timeArg(seg.start), '-to', timeArg(seg.end), '-i', input]
   if (mode === 'fast') {
     return [
@@ -60,24 +76,28 @@ export function outputFileName(videoName: string): string {
   return `${base}-highlights.mp4`
 }
 
-export function totalDuration(segments: readonly Segment[]): number {
+export function totalDuration(segments: readonly Span[]): number {
   return segments.reduce((sum, seg) => sum + (seg.end - seg.start), 0)
 }
 
-/** Output size at the source's average bitrate. */
+export type SizedSource = { size: number; duration: number }
+
+/** Output size with each segment at its own source's average bitrate. */
 export function estimateOutputBytes(
   segments: readonly Segment[],
-  fileSize: number,
-  duration: number,
+  sources: readonly SizedSource[],
 ): number {
-  if (!(duration > 0)) return 0
-  return totalDuration(segments) * (fileSize / duration)
+  return segments.reduce((sum, seg) => {
+    const source = sources[seg.sourceIndex]
+    if (!source || !(source.duration > 0)) return sum
+    return sum + (seg.end - seg.start) * (source.size / source.duration)
+  }, 0)
 }
 
 /** Wall-clock seconds to render `segments` at `rate` media seconds per second. */
 export function estimateSeconds(
   mode: JoinMode,
-  segments: readonly Segment[],
+  segments: readonly Span[],
   rate: number = DEFAULT_RATE[mode],
 ): number {
   const effective = rate > 0 && Number.isFinite(rate) ? rate : DEFAULT_RATE[mode]
@@ -91,18 +111,14 @@ export function formatEstimate(seconds: number): string {
 }
 
 /** Fraction of the current segment written, from an ffmpeg progress event's `time`. */
-export function segmentRatio(time: number, seg: Segment): number {
+export function segmentRatio(time: number, seg: Span): number {
   const length = seg.end - seg.start
   if (!(length > 0) || !Number.isFinite(time)) return 0
   return Math.min(Math.max(time / MICROSECONDS / length, 0), 1)
 }
 
 /** Overall progress with each segment weighted by its duration. */
-export function weightedProgress(
-  segments: readonly Segment[],
-  index: number,
-  ratio: number,
-): number {
+export function weightedProgress(segments: readonly Span[], index: number, ratio: number): number {
   const total = totalDuration(segments)
   if (total <= 0) return 0
   const done = totalDuration(segments.slice(0, Math.max(index, 0)))

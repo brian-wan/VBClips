@@ -2,6 +2,8 @@ import {
   CONCAT_LIST,
   concatArgs,
   concatListContent,
+  inputPath,
+  mountPoint,
   segmentArgs,
   segmentFileName,
   segmentRatio,
@@ -44,14 +46,14 @@ export type JoinEvent = {
 }
 
 export type JoinOptions = {
-  file: File
+  /** The sources in timeline order; `Segment.sourceIndex` points into this list. */
+  files: readonly File[]
   segments: readonly Segment[]
   mode: JoinMode
   onEvent?: (event: JoinEvent) => void
   signal?: AbortSignal
 }
 
-export const MOUNT_POINT = '/in'
 export const OUTPUT = 'out.mp4'
 const LOG_LIMIT = 200
 
@@ -78,11 +80,11 @@ export class JoinCancelled extends Error {
 }
 
 /**
- * Renders `segments` of `file` into one mp4. The source is mounted, never copied into wasm memory.
- * Aborting `signal` terminates ffmpeg; the next run reloads the core.
+ * Renders `segments` into one mp4. Each source is mounted at `/in<i>`, never copied into wasm
+ * memory. Aborting `signal` terminates ffmpeg; the next run reloads the core.
  */
 export async function runJoin({
-  file,
+  files,
   segments,
   mode,
   onEvent,
@@ -114,7 +116,7 @@ export async function runJoin({
   signal?.addEventListener('abort', onAbort)
   ffmpeg.on('log', onLog)
   ffmpeg.on('progress', onProgress)
-  let mounted = false
+  const mounted: string[] = []
 
   const fail = (message: string, failedMode: JoinMode) =>
     new JoinError(message, failedMode, [...log])
@@ -125,15 +127,21 @@ export async function runJoin({
   const segmentFiles = segments.map((_, i) => segmentFileName(i))
 
   const render = async (renderMode: JoinMode): Promise<boolean> => {
-    const input = `${MOUNT_POINT}/${file.name}`
     for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      const file = files[seg.sourceIndex]
+      if (!file) {
+        await removeAll(segmentFiles.slice(0, i))
+        throw fail(`Segment ${i + 1} has no source video.`, renderMode)
+      }
       emit({
         phase: 'segment',
         mode: renderMode,
         segmentIndex: i,
         progress: weightedProgress(segments, i, 0),
       })
-      const code = await ffmpeg.exec(segmentArgs(renderMode, segments[i], i, input))
+      const input = inputPath(seg.sourceIndex, file.name)
+      const code = await ffmpeg.exec(segmentArgs(renderMode, seg, i, input))
       if (code !== 0) {
         await removeAll(segmentFiles.slice(0, i + 1))
         throw fail(`ffmpeg could not cut segment ${i + 1} (exit code ${code}).`, renderMode)
@@ -153,8 +161,10 @@ export async function runJoin({
 
   try {
     await ffmpeg.load()
-    await ffmpeg.mount(file, MOUNT_POINT)
-    mounted = true
+    for (let i = 0; i < files.length; i++) {
+      await ffmpeg.mount(files[i], mountPoint(i))
+      mounted.push(mountPoint(i))
+    }
 
     if (!(await render(mode))) {
       emit({
@@ -179,6 +189,8 @@ export async function runJoin({
     signal?.removeEventListener('abort', onAbort)
     ffmpeg.off('log', onLog)
     ffmpeg.off('progress', onProgress)
-    if (mounted && !signal?.aborted) await ffmpeg.unmount(MOUNT_POINT).catch(() => undefined)
+    if (!signal?.aborted) {
+      for (const point of mounted) await ffmpeg.unmount(point).catch(() => undefined)
+    }
   }
 }

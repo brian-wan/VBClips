@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest'
 import type { Clip } from './clips'
 import { edgeTime, hitTest, percentOf, timeAtX, trimClip, xOfTime } from './scrubber'
 
-const clip = (id: string, start: number, end: number): Clip => ({ id, start, end })
+const clip = (id: string, start: number, end: number, sourceId = 's'): Clip => ({
+  id,
+  sourceId,
+  start,
+  end,
+})
 
 describe('position conversion', () => {
   it('maps x to time and clamps outside the track', () => {
@@ -50,6 +55,11 @@ describe('hitTest', () => {
   it('grabs the playhead before a clip segment under it', () => {
     expect(hitTest({ ...base, clips, playhead: 75, x: 752 })).toEqual({ kind: 'playhead' })
     expect(hitTest({ ...base, clips, playhead: 75, x: 760 })).toEqual({ kind: 'clip', id: 'c' })
+  })
+
+  it('ignores the playhead when it is in another block', () => {
+    expect(hitTest({ ...base, clips, playhead: null, x: 752 })).toEqual({ kind: 'clip', id: 'c' })
+    expect(hitTest({ ...base, clips: [], playhead: null, x: 0 })).toEqual({ kind: 'track' })
   })
 
   it('prefers handles over the playhead', () => {

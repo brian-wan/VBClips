@@ -8,6 +8,11 @@
   background: var(--color-bg);
 }
 
+.dropping {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -8px;
+}
+
 .topBar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);

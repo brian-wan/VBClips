@@ -5,6 +5,8 @@ import {
   estimateOutputBytes,
   estimateSeconds,
   formatEstimate,
+  inputPath,
+  mountPoint,
   outputFileName,
   planSegments,
   segmentArgs,
@@ -12,18 +14,42 @@ import {
   weightedProgress,
 } from './plan'
 
-const clip = (id: string, start: number, end: number) => ({ id, start, end })
+const clip = (id: string, start: number, end: number, sourceId = 'a') => ({
+  id,
+  sourceId,
+  start,
+  end,
+})
 
 describe('planSegments', () => {
   it('merges overlapping clips and sorts by start', () => {
-    expect(planSegments([clip('c', 20, 25), clip('a', 2, 6), clip('b', 4, 9)])).toEqual([
-      { start: 2, end: 9 },
-      { start: 20, end: 25 },
+    expect(planSegments([clip('c', 20, 25), clip('a', 2, 6), clip('b', 4, 9)], ['a'])).toEqual([
+      { sourceIndex: 0, start: 2, end: 9 },
+      { sourceIndex: 0, start: 20, end: 25 },
     ])
   })
 
+  it('orders segments by source, merging overlaps only within a source', () => {
+    const clips = [clip('1', 0, 5, 'a'), clip('2', 3, 8, 'b'), clip('3', 4, 6, 'a')]
+    expect(planSegments(clips, ['b', 'a'])).toEqual([
+      { sourceIndex: 0, start: 3, end: 8 },
+      { sourceIndex: 1, start: 0, end: 6 },
+    ])
+  })
+
+  it('skips clips of sources that are not listed', () => {
+    expect(planSegments([clip('1', 0, 5, 'gone')], ['a'])).toEqual([])
+  })
+
   it('returns nothing for no clips', () => {
-    expect(planSegments([])).toEqual([])
+    expect(planSegments([], ['a'])).toEqual([])
+  })
+})
+
+describe('inputs', () => {
+  it('mounts each source at its own directory', () => {
+    expect(mountPoint(0)).toBe('/in0')
+    expect(inputPath(2, 'court 2.mov')).toBe('/in2/court 2.mov')
   })
 })
 
@@ -116,21 +142,37 @@ describe('outputFileName', () => {
 describe('estimateOutputBytes', () => {
   it('scales the source bitrate by the selected duration', () => {
     const segments = [
-      { start: 0, end: 10 },
-      { start: 50, end: 60 },
+      { sourceIndex: 0, start: 0, end: 10 },
+      { sourceIndex: 0, start: 50, end: 60 },
     ]
-    expect(estimateOutputBytes(segments, 1_000_000, 100)).toBe(200_000)
+    expect(estimateOutputBytes(segments, [{ size: 1_000_000, duration: 100 }])).toBe(200_000)
   })
 
-  it('is zero before the duration is known', () => {
-    expect(estimateOutputBytes([{ start: 0, end: 10 }], 1_000_000, 0)).toBe(0)
+  it('sums each segment at its own source bitrate', () => {
+    const segments = [
+      { sourceIndex: 0, start: 0, end: 10 },
+      { sourceIndex: 1, start: 0, end: 10 },
+    ]
+    const sources = [
+      { size: 1_000_000, duration: 100 },
+      { size: 4_000_000, duration: 100 },
+    ]
+    expect(estimateOutputBytes(segments, sources)).toBe(500_000)
+  })
+
+  it('skips sources whose duration is unknown', () => {
+    const segments = [{ sourceIndex: 0, start: 0, end: 10 }]
+    expect(estimateOutputBytes(segments, [{ size: 1_000_000, duration: 0 }])).toBe(0)
   })
 })
 
 describe('estimateSeconds', () => {
-  const segments = [{ start: 0, end: 30 }]
+  const segments = [
+    { sourceIndex: 0, start: 0, end: 20 },
+    { sourceIndex: 1, start: 0, end: 10 },
+  ]
 
-  it('assumes 0.15x realtime for precise before a rate is measured', () => {
+  it('assumes 0.15x realtime for precise before a rate is measured, over all segments', () => {
     expect(estimateSeconds('precise', segments)).toBeCloseTo(200)
   })
 

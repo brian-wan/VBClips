@@ -101,24 +101,25 @@ class FakeFFmpeg implements FFmpegLike {
 }
 
 const file = new File(['x'], 'game.mp4', { type: 'video/mp4' })
+const files = [file]
 const segments: Segment[] = [
-  { start: 0, end: 10 },
-  { start: 20, end: 50 },
+  { sourceIndex: 0, start: 0, end: 10 },
+  { sourceIndex: 0, start: 20, end: 50 },
 ]
 const isConcat = (args: string[]) => args.includes('concat')
 
 describe('runJoin', () => {
   it('mounts the source, cuts each segment, concatenates and returns the output', async () => {
     const ffmpeg = new FakeFFmpeg()
-    const blob = await runJoin({ ffmpeg, file, segments, mode: 'fast' })
+    const blob = await runJoin({ ffmpeg, files, segments, mode: 'fast' })
 
     expect(blob.size).toBe(4)
     expect(blob.type).toBe('video/mp4')
     expect(ffmpeg.calls[0].method).toBe('load')
-    expect(ffmpeg.calls[1]).toEqual({ method: 'mount', args: ['game.mp4', '/in'] })
+    expect(ffmpeg.calls[1]).toEqual({ method: 'mount', args: ['game.mp4', '/in0'] })
     expect(ffmpeg.execArgs()).toEqual([
-      segmentArgs('fast', segments[0], 0, '/in/game.mp4'),
-      segmentArgs('fast', segments[1], 1, '/in/game.mp4'),
+      segmentArgs('fast', segments[0], 0, '/in0/game.mp4'),
+      segmentArgs('fast', segments[1], 1, '/in0/game.mp4'),
       ['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', 'out.mp4'],
     ])
     expect(ffmpeg.calls).toContainEqual({
@@ -128,15 +129,52 @@ describe('runJoin', () => {
     expect(ffmpeg.methods().at(-1)).toBe('unmount')
   })
 
+  it('mounts every source and cuts segments from their own source in sequence order', async () => {
+    const court = new File(['y'], 'court2.mov', { type: 'video/quicktime' })
+    const twoSources: Segment[] = [
+      { sourceIndex: 1, start: 5, end: 8 },
+      { sourceIndex: 0, start: 1, end: 3 },
+    ]
+    const ffmpeg = new FakeFFmpeg()
+    await runJoin({ ffmpeg, files: [file, court], segments: twoSources, mode: 'fast' })
+
+    expect(ffmpeg.calls.filter((c) => c.method === 'mount').map((c) => c.args)).toEqual([
+      ['game.mp4', '/in0'],
+      ['court2.mov', '/in1'],
+    ])
+    expect(ffmpeg.execArgs().slice(0, 2)).toEqual([
+      segmentArgs('fast', twoSources[0], 0, '/in1/court2.mov'),
+      segmentArgs('fast', twoSources[1], 1, '/in0/game.mp4'),
+    ])
+    expect(ffmpeg.calls.filter((c) => c.method === 'unmount').map((c) => c.args[0])).toEqual([
+      '/in0',
+      '/in1',
+    ])
+  })
+
+  it('falls back to precise across sources when the fast concat fails', async () => {
+    const court = new File(['y'], 'court2.mov', { type: 'video/quicktime' })
+    const twoSources: Segment[] = [
+      { sourceIndex: 0, start: 1, end: 3 },
+      { sourceIndex: 1, start: 5, end: 8 },
+    ]
+    let concats = 0
+    const ffmpeg = new FakeFFmpeg((args) => (isConcat(args) && concats++ === 0 ? 1 : 0))
+    await runJoin({ ffmpeg, files: [file, court], segments: twoSources, mode: 'fast' })
+    expect(ffmpeg.execArgs()[4]).toEqual(
+      segmentArgs('precise', twoSources[1], 1, '/in1/court2.mov'),
+    )
+  })
+
   it('leaves nothing behind in MEMFS', async () => {
     const ffmpeg = new FakeFFmpeg()
-    await runJoin({ ffmpeg, file, segments, mode: 'precise' })
+    await runJoin({ ffmpeg, files, segments, mode: 'precise' })
     expect([...ffmpeg.files.keys()]).toEqual([])
   })
 
   it('deletes the segment files after concat, before reading the output', async () => {
     const ffmpeg = new FakeFFmpeg()
-    await runJoin({ ffmpeg, file, segments, mode: 'precise' })
+    await runJoin({ ffmpeg, files, segments, mode: 'precise' })
     const methods = ffmpeg.calls.map((c) => `${c.method} ${c.args[0] ?? ''}`)
     const concat = methods.findIndex((m) => m.startsWith('exec -f,concat'))
     const read = methods.indexOf('readFile out.mp4')
@@ -154,7 +192,7 @@ describe('runJoin', () => {
       return 0
     })
     const events: JoinEvent[] = []
-    await runJoin({ ffmpeg, file, segments, mode: 'fast', onEvent: (e) => events.push(e) })
+    await runJoin({ ffmpeg, files, segments, mode: 'fast', onEvent: (e) => events.push(e) })
 
     const summary = events
       .filter((e) => !e.log)
@@ -177,7 +215,7 @@ describe('runJoin', () => {
     const logs: string[] = []
     const error = await runJoin({
       ffmpeg,
-      file,
+      files,
       segments,
       mode: 'precise',
       onEvent: (e) => e.log && logs.push(e.log),
@@ -192,7 +230,7 @@ describe('runJoin', () => {
 
   it('reports a fast segment failure without falling back', async () => {
     const ffmpeg = new FakeFFmpeg((args) => (args.at(-1) === 'seg1.mp4' ? 1 : 0))
-    const error = await runJoin({ ffmpeg, file, segments, mode: 'fast' }).catch((e: unknown) => e)
+    const error = await runJoin({ ffmpeg, files, segments, mode: 'fast' }).catch((e: unknown) => e)
     expect((error as JoinError).mode).toBe('fast')
     expect(ffmpeg.execArgs()).toHaveLength(2)
     expect(ffmpeg.files.size).toBe(0)
@@ -204,7 +242,7 @@ describe('runJoin', () => {
     const events: JoinEvent[] = []
     const blob = await runJoin({
       ffmpeg,
-      file,
+      files,
       segments,
       mode: 'fast',
       onEvent: (e) => events.push(e),
@@ -213,7 +251,7 @@ describe('runJoin', () => {
     expect(blob.size).toBe(4)
     const execs = ffmpeg.execArgs()
     expect(execs).toHaveLength(6)
-    expect(execs[3]).toEqual(segmentArgs('precise', segments[0], 0, '/in/game.mp4'))
+    expect(execs[3]).toEqual(segmentArgs('precise', segments[0], 0, '/in0/game.mp4'))
     expect(events.find((e) => e.phase === 'fallback')).toMatchObject({
       mode: 'precise',
       log: FALLBACK_REASON,
@@ -224,7 +262,7 @@ describe('runJoin', () => {
 
   it('fails when the precise concat fails', async () => {
     const ffmpeg = new FakeFFmpeg((args) => (isConcat(args) ? 1 : 0))
-    const error = await runJoin({ ffmpeg, file, segments, mode: 'precise' }).catch((e) => e)
+    const error = await runJoin({ ffmpeg, files, segments, mode: 'precise' }).catch((e) => e)
     expect(error).toBeInstanceOf(JoinError)
     expect((error as JoinError).message).toMatch(/combine/)
     expect(ffmpeg.execArgs()).toHaveLength(3)
@@ -238,7 +276,7 @@ describe('runJoin', () => {
       controller.abort()
       return new Promise<number>(() => undefined)
     })
-    const first = runJoin({ ffmpeg, file, segments, mode: 'precise', signal: controller.signal })
+    const first = runJoin({ ffmpeg, files, segments, mode: 'precise', signal: controller.signal })
     await expect(first).rejects.toBeInstanceOf(JoinCancelled)
     expect(ffmpeg.methods()).toContain('terminate')
     expect(ffmpeg.methods()).not.toContain('unmount')
@@ -246,7 +284,7 @@ describe('runJoin', () => {
     expect(ffmpeg.logListeners.size).toBe(0)
 
     hang = false
-    const blob = await runJoin({ ffmpeg, file, segments, mode: 'precise' })
+    const blob = await runJoin({ ffmpeg, files, segments, mode: 'precise' })
     expect(blob.size).toBe(4)
     expect(ffmpeg.loads).toBe(2)
   })
@@ -256,14 +294,14 @@ describe('runJoin', () => {
     controller.abort()
     const ffmpeg = new FakeFFmpeg()
     await expect(
-      runJoin({ ffmpeg, file, segments, mode: 'fast', signal: controller.signal }),
+      runJoin({ ffmpeg, files, segments, mode: 'fast', signal: controller.signal }),
     ).rejects.toBeInstanceOf(JoinCancelled)
     expect(ffmpeg.calls).toEqual([])
   })
 
   it('refuses an empty selection', async () => {
     await expect(
-      runJoin({ ffmpeg: new FakeFFmpeg(), file, segments: [], mode: 'fast' }),
+      runJoin({ ffmpeg: new FakeFFmpeg(), files, segments: [], mode: 'fast' }),
     ).rejects.toBeInstanceOf(JoinError)
   })
 })

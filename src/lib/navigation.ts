@@ -1,4 +1,7 @@
-import type { Clip } from './clips'
+import type { Span } from './clips'
+
+/** Any clip-like span; the editor passes clips in sequence time so they cross sources. */
+type NavClip = Span & { id: string }
 
 const PREV_RESTART_WINDOW = 1
 const EPSILON = 1e-3
@@ -8,7 +11,7 @@ const EPSILON = 1e-3
  * otherwise the last clip starting at or before the playhead.
  */
 export function currentClipIndex(
-  clips: readonly Clip[],
+  clips: readonly NavClip[],
   playhead: number,
   selectedId: string | null,
 ): number {
@@ -26,7 +29,7 @@ export function currentClipIndex(
 
 /** Next clip after the current one; wraps to the first after the last. Expects sorted clips. */
 export function nextClipIndex(
-  clips: readonly Clip[],
+  clips: readonly NavClip[],
   playhead: number,
   selectedId: string | null,
 ): number {
@@ -41,7 +44,7 @@ export function nextClipIndex(
  * otherwise restart the current clip. Never wraps backwards. Expects sorted clips.
  */
 export function prevClipIndex(
-  clips: readonly Clip[],
+  clips: readonly NavClip[],
   playhead: number,
   selectedId: string | null,
 ): number {

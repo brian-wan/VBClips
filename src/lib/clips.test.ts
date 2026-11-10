@@ -3,6 +3,7 @@ import {
   canSetEnd,
   canSetStart,
   clampToDuration,
+  clipsOverlap,
   findOverlappingIds,
   insertClip,
   manualClipSpan,
@@ -15,7 +16,12 @@ import {
   type Clip,
 } from './clips'
 
-const clip = (id: string, start: number, end: number): Clip => ({ id, start, end })
+const clip = (id: string, start: number, end: number, sourceId = 's'): Clip => ({
+  id,
+  sourceId,
+  start,
+  end,
+})
 
 describe('insertion and sorting', () => {
   it('sorts by start then end', () => {
@@ -35,6 +41,17 @@ describe('insertion and sorting', () => {
     expect(replaceClip(clips, clip('a', 20, 21)).map((c) => c.id)).toEqual(['b', 'a'])
   })
 
+  it('orders by source order first, then start', () => {
+    const clips = [clip('a', 1, 2, 'x'), clip('b', 0, 1, 'y'), clip('c', 5, 6, 'x')]
+    expect(sortClips(clips, ['y', 'x']).map((c) => c.id)).toEqual(['b', 'a', 'c'])
+    expect(insertClip(clips, clip('d', 0, 1, 'x'), ['x', 'y']).map((c) => c.id)).toEqual([
+      'd',
+      'a',
+      'c',
+      'b',
+    ])
+  })
+
   it('removes by id', () => {
     expect(removeClip([clip('a', 1, 2), clip('b', 3, 4)], 'a')).toEqual([clip('b', 3, 4)])
   })
@@ -49,6 +66,12 @@ describe('overlaps', () => {
       clip('d', 1, 2),
     ])
     expect([...ids].sort()).toEqual(['a', 'b', 'd'])
+  })
+
+  it('only compares clips of the same source', () => {
+    expect(findOverlappingIds([clip('a', 0, 5, 'x'), clip('b', 1, 6, 'y')]).size).toBe(0)
+    expect(clipsOverlap(clip('a', 0, 5, 'x'), clip('b', 1, 6, 'y'))).toBe(false)
+    expect(clipsOverlap(clip('a', 0, 5, 'x'), clip('b', 1, 6, 'x'))).toBe(true)
   })
 
   it('does not flag clips that only touch', () => {
@@ -71,6 +94,10 @@ describe('overlaps', () => {
   it('totals the clipped duration counting overlaps once', () => {
     expect(totalClippedDuration([clip('a', 0, 5), clip('b', 4, 8), clip('c', 10, 12)])).toBe(10)
     expect(totalClippedDuration([])).toBe(0)
+  })
+
+  it('merges overlaps per source when totalling', () => {
+    expect(totalClippedDuration([clip('a', 0, 5, 'x'), clip('b', 0, 5, 'y')])).toBe(10)
   })
 })
 

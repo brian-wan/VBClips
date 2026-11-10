@@ -1,4 +1,6 @@
-export type Clip = { id: string; start: number; end: number }
+/** A marked point. `start` and `end` are in its source's local time; a clip never spans sources. */
+export type Clip = { id: string; sourceId: string; start: number; end: number }
+export type Span = { start: number; end: number }
 
 export const MIN_CLIP_LENGTH = 0.2
 export const MANUAL_CLIP_LENGTH = 2
@@ -14,7 +16,7 @@ export function clampToDuration(t: number, duration: number): number {
   return clamp(t, 0, Math.max(0, duration))
 }
 
-export function clipDuration(clip: Pick<Clip, 'start' | 'end'>): number {
+export function clipDuration(clip: Span): number {
   return clip.end - clip.start
 }
 
@@ -22,16 +24,33 @@ export function isValidSpan(start: number, end: number): boolean {
   return end - start >= MIN_CLIP_LENGTH - EPSILON
 }
 
-export function sortClips(clips: readonly Clip[]): Clip[] {
-  return [...clips].sort((a, b) => a.start - b.start || a.end - b.end)
+/**
+ * Clips in source order, then by start time. `sourceOrder` lists source ids in timeline order;
+ * clips of sources missing from it sort first.
+ */
+export function sortClips(clips: readonly Clip[], sourceOrder: readonly string[] = []): Clip[] {
+  const rank = new Map(sourceOrder.map((id, i) => [id, i]))
+  const rankOf = (clip: Clip) => rank.get(clip.sourceId) ?? -1
+  return [...clips].sort((a, b) => rankOf(a) - rankOf(b) || a.start - b.start || a.end - b.end)
 }
 
-export function insertClip(clips: readonly Clip[], clip: Clip): Clip[] {
-  return sortClips([...clips, clip])
+export function insertClip(
+  clips: readonly Clip[],
+  clip: Clip,
+  sourceOrder: readonly string[] = [],
+): Clip[] {
+  return sortClips([...clips, clip], sourceOrder)
 }
 
-export function replaceClip(clips: readonly Clip[], clip: Clip): Clip[] {
-  return sortClips(clips.map((c) => (c.id === clip.id ? clip : c)))
+export function replaceClip(
+  clips: readonly Clip[],
+  clip: Clip,
+  sourceOrder: readonly string[] = [],
+): Clip[] {
+  return sortClips(
+    clips.map((c) => (c.id === clip.id ? clip : c)),
+    sourceOrder,
+  )
 }
 
 export function removeClip(clips: readonly Clip[], id: string): Clip[] {
@@ -39,57 +58,74 @@ export function removeClip(clips: readonly Clip[], id: string): Clip[] {
 }
 
 export function clipsOverlap(a: Clip, b: Clip): boolean {
-  return a.start < b.end && b.start < a.end
+  return a.sourceId === b.sourceId && a.start < b.end && b.start < a.end
 }
 
-/** Ids of every clip that overlaps at least one other clip. */
+export function groupBySource(clips: readonly Clip[]): Map<string, Clip[]> {
+  const groups = new Map<string, Clip[]>()
+  for (const clip of clips) {
+    const group = groups.get(clip.sourceId)
+    if (group) group.push(clip)
+    else groups.set(clip.sourceId, [clip])
+  }
+  return groups
+}
+
+/** Ids of every clip that overlaps at least one other clip of the same source. */
 export function findOverlappingIds(clips: readonly Clip[]): Set<string> {
   const ids = new Set<string>()
-  const sorted = sortClips(clips)
-  for (let i = 0; i < sorted.length; i++) {
-    for (let j = i + 1; j < sorted.length && sorted[j].start < sorted[i].end; j++) {
-      ids.add(sorted[i].id)
-      ids.add(sorted[j].id)
+  for (const group of groupBySource(clips).values()) {
+    const sorted = sortClips(group)
+    for (let i = 0; i < sorted.length; i++) {
+      for (let j = i + 1; j < sorted.length && sorted[j].start < sorted[i].end; j++) {
+        ids.add(sorted[i].id)
+        ids.add(sorted[j].id)
+      }
     }
   }
   return ids
 }
 
-/** Union of all clip spans; touching or overlapping clips become one segment. */
-export function mergeOverlaps(clips: readonly Clip[]): { start: number; end: number }[] {
-  const merged: { start: number; end: number }[] = []
-  for (const clip of sortClips(clips)) {
+/** Union of spans from one source; touching or overlapping spans become one segment. */
+export function mergeOverlaps(spans: readonly Span[]): Span[] {
+  const merged: Span[] = []
+  const sorted = [...spans].sort((a, b) => a.start - b.start || a.end - b.end)
+  for (const span of sorted) {
     const last = merged[merged.length - 1]
-    if (last && clip.start <= last.end) {
-      last.end = Math.max(last.end, clip.end)
+    if (last && span.start <= last.end) {
+      last.end = Math.max(last.end, span.end)
     } else {
-      merged.push({ start: clip.start, end: clip.end })
+      merged.push({ start: span.start, end: span.end })
     }
   }
   return merged
 }
 
-/** Length of the video the join step would produce (overlaps counted once). */
+/** Length of the video the join step would produce (overlaps counted once per source). */
 export function totalClippedDuration(clips: readonly Clip[]): number {
-  return mergeOverlaps(clips).reduce((sum, seg) => sum + clipDuration(seg), 0)
+  let total = 0
+  for (const group of groupBySource(clips).values()) {
+    total += mergeOverlaps(group).reduce((sum, seg) => sum + clipDuration(seg), 0)
+  }
+  return total
 }
 
 /** Span for the "+" button: 2 s from the playhead, shifted back if it would run past the end. */
-export function manualClipSpan(playhead: number, duration: number): { start: number; end: number } {
+export function manualClipSpan(playhead: number, duration: number): Span {
   const end = Math.min(playhead + MANUAL_CLIP_LENGTH, duration)
   const start = Math.max(0, Math.min(playhead, end - MANUAL_CLIP_LENGTH))
   return { start, end }
 }
 
-export function canSetStart(clip: Clip, start: number): boolean {
+export function canSetStart(clip: Span, start: number): boolean {
   return start >= -EPSILON && isValidSpan(start, clip.end)
 }
 
-export function canSetEnd(clip: Clip, end: number, duration: number): boolean {
+export function canSetEnd(clip: Span, end: number, duration: number): boolean {
   return end <= duration + EPSILON && isValidSpan(clip.start, end)
 }
 
-/** Rounds away float noise from nudges like 0.1 + 0.2. */
+/** Rounds away float noise such as 0.1 + 0.2. */
 export function roundTime(t: number): number {
   return Math.round(t * 1000) / 1000
 }

@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRoute } from './hooks/useRoute'
 import type { Clip } from './lib/clips'
+import type { SourceMeta } from './lib/session'
 import { Editor } from './screens/Editor'
 import { Home } from './screens/Home'
 
-export type EditorInput = { file: File; clips: Clip[]; playhead: number }
+/** A source with its picked file; the duration has already been read from the file. */
+export type LoadedSource = { meta: SourceMeta; file: File }
+
+export type EditorInput = { sources: LoadedSource[]; clips: Clip[]; playhead: number }
 
 export default function App() {
   const [route, navigate] = useRoute()

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { Clip } from './clips'
 import { currentClipIndex, nextClipIndex, prevClipIndex } from './navigation'
+
+type Clip = { id: string; start: number; end: number }
 
 const clips: Clip[] = [
   { id: 'a', start: 10, end: 15 },

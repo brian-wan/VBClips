@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
-import type { EditorInput } from '../App'
+import type { EditorInput, LoadedSource } from '../App'
 import { ChevronRight, Trash, Volleyball } from '../components/Icons'
 import { ShortcutsModal } from '../components/ShortcutsModal'
 import ui from '../components/ui.module.css'
 import { formatBytes } from '../lib/bytes'
 import { totalClippedDuration } from '../lib/clips'
-import { sameVideo } from '../lib/fingerprint'
+import { fingerprint } from '../lib/fingerprint'
 import { clearSessions, loadSession, type SavedSession } from '../lib/persistence'
+import { locate, toSequence } from '../lib/sequence'
 import { formatTime } from '../lib/time'
-import { canProbablyPlay, unplayableMessage } from '../playable'
+import { loadSource } from '../media/loadSource'
+import { unplayableMessage } from '../playable'
 import { browserStore } from '../storage'
 import styles from './Home.module.css'
 
@@ -20,11 +22,34 @@ type Props = {
 
 type PickMode = 'new' | 'continue'
 
+/** Probes every file in order; reports the first one the browser cannot play. */
+async function loadAll(files: File[]): Promise<LoadedSource[] | string> {
+  const loaded = await Promise.all(files.map(loadSource))
+  const failed = loaded.findIndex((source) => source === null)
+  if (failed >= 0) return unplayableMessage(files[failed].name)
+  return loaded as LoadedSource[]
+}
+
+/** The saved playhead moved to where its source sits once missing sources are dropped. */
+function keptPlayhead(saved: SavedSession, kept: readonly LoadedSource[]): number {
+  const { index, localTime } = locate(saved.sources, saved.playhead)
+  const id = saved.sources[index]?.id
+  const keptIndex = kept.findIndex((s) => s.meta.id === id)
+  if (keptIndex < 0) return 0
+  return toSequence(
+    kept.map((s) => s.meta),
+    keptIndex,
+    localTime,
+  )
+}
+
 export function Home({ onOpen, error, onError }: Props) {
   const [saved, setSaved] = useState<SavedSession | null>(() => {
     const store = browserStore()
     return store ? loadSession(store) : null
   })
+  const [found, setFound] = useState<ReadonlyMap<string, File>>(new Map())
+  const [continuing, setContinuing] = useState(false)
   const [mismatch, setMismatch] = useState<File | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
@@ -40,33 +65,84 @@ export function Home({ onOpen, error, onError }: Props) {
 
   const openPicker = (mode: PickMode) => {
     pickMode.current = mode
-    inputRef.current?.click()
+    const input = inputRef.current
+    if (!input) return
+    input.multiple = mode === 'continue'
+    input.click()
   }
 
-  const openWithSaved = (file: File, session: SavedSession) =>
-    onOpen({ file, clips: session.clips, playhead: session.playhead })
+  const openNew = async (file: File) => {
+    const loaded = await loadAll([file])
+    if (typeof loaded === 'string') onError(loaded)
+    else onOpen({ sources: loaded, clips: [], playhead: 0 })
+  }
 
-  const handleFile = (file: File, mode: PickMode) => {
-    setMismatch(null)
-    if (!canProbablyPlay(file)) {
-      onError(unplayableMessage(file.name))
+  /** Opens the saved session with the sources that have a file; the others and their clips go. */
+  const openSaved = async (session: SavedSession, files: ReadonlyMap<string, File>) => {
+    const picked = session.sources.flatMap((s) => {
+      const file = files.get(s.id)
+      return file ? [file] : []
+    })
+    const loaded = await loadAll(picked)
+    if (typeof loaded === 'string') {
+      onError(loaded)
       return
     }
-    onError(null)
-    if (saved && sameVideo(saved.video, file)) {
-      openWithSaved(file, saved)
-    } else if (mode === 'continue' && saved) {
-      setMismatch(file)
-    } else {
-      onOpen({ file, clips: [], playhead: 0 })
+    const ids = new Set(loaded.map((s) => s.meta.id))
+    onOpen({
+      sources: loaded,
+      clips: session.clips.filter((c) => ids.has(c.sourceId)),
+      playhead: keptPlayhead(session, loaded),
+    })
+  }
+
+  /** "Use it anyway": the one saved source is replaced by a different file, clips and all. */
+  const openWithReplacement = async (session: SavedSession, file: File) => {
+    const loaded = await loadAll([file])
+    if (typeof loaded === 'string') {
+      onError(loaded)
+      return
     }
+    const id = loaded[0].meta.id
+    onOpen({
+      sources: loaded,
+      clips: session.clips.map((c) => ({ ...c, sourceId: id })),
+      playhead: session.playhead,
+    })
+  }
+
+  const addMatches = (session: SavedSession, files: File[]) => {
+    const ids = new Set(session.sources.map((s) => s.id))
+    const next = new Map(found)
+    for (const file of files) {
+      const id = fingerprint(file)
+      if (ids.has(id)) next.set(id, file)
+    }
+    const matchedNone = files.every((file) => !ids.has(fingerprint(file)))
+    if (session.sources.length === 1 && matchedNone && files.length > 0) {
+      setMismatch(files[0])
+      return
+    }
+    setMismatch(null)
+    setFound(next)
+    setContinuing(true)
+    if (session.sources.every((s) => next.has(s.id))) void openSaved(session, next)
+  }
+
+  const handleFiles = (files: File[], mode: PickMode) => {
+    onError(null)
+    if (files.length === 0) return
+    const matchesSaved =
+      saved !== null && files.some((f) => saved.sources.some((s) => s.id === fingerprint(f)))
+    if (saved && (mode === 'continue' || matchesSaved)) addMatches(saved, files)
+    else void openNew(files[0])
   }
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault()
     setDragging(false)
     const file = e.dataTransfer.files[0]
-    if (file) handleFile(file, 'new')
+    if (file) handleFiles([file], 'new')
   }
 
   const deleteSaved = () => {
@@ -75,7 +151,11 @@ export function Home({ onOpen, error, onError }: Props) {
     setSaved(null)
     setConfirmDelete(false)
     setMismatch(null)
+    setContinuing(false)
+    setFound(new Map())
   }
+
+  const missing = saved && continuing ? saved.sources.filter((s) => !found.has(s.id)) : []
 
   return (
     <main
@@ -105,10 +185,11 @@ export function Home({ onOpen, error, onError }: Props) {
         type="file"
         accept="video/*"
         hidden
+        data-testid="home-file-input"
         onChange={(e) => {
-          const file = e.target.files?.[0]
+          const files = [...(e.target.files ?? [])]
           e.target.value = ''
-          if (file) handleFile(file, pickMode.current)
+          handleFiles(files, pickMode.current)
         }}
       />
 
@@ -147,21 +228,45 @@ export function Home({ onOpen, error, onError }: Props) {
         </div>
       )}
 
-      {saved && !mismatch && (
-        <p className={styles.hint}>Pick the same video file again to continue.</p>
+      {saved && !mismatch && missing.length === 0 && (
+        <p className={styles.hint}>
+          {saved.sources.length > 1
+            ? `Pick the same ${saved.sources.length} video files again to continue.`
+            : 'Pick the same video file again to continue.'}
+        </p>
+      )}
+
+      {saved && !mismatch && missing.length > 0 && (
+        <div className={styles.mismatch} role="status">
+          <p>Still needed: {missing.map((s) => s.name).join(', ')}</p>
+          <div className={styles.mismatchActions}>
+            <button type="button" className={ui.pillSmall} onClick={() => openPicker('continue')}>
+              Pick files
+            </button>
+            {found.size > 0 && (
+              <button
+                type="button"
+                className={ui.pillSecondary + ' ' + styles.small}
+                onClick={() => void openSaved(saved, found)}
+              >
+                Open without them
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {saved && mismatch && (
         <div className={styles.mismatch} role="alert">
           <p>
-            That doesn’t look like the same video (expected {saved.video.name},{' '}
-            {formatBytes(saved.video.size)})
+            That doesn’t look like the same video (expected {saved.sources[0].name},{' '}
+            {formatBytes(saved.sources[0].size)})
           </p>
           <div className={styles.mismatchActions}>
             <button
               type="button"
               className={ui.pillSmall}
-              onClick={() => openWithSaved(mismatch, saved)}
+              onClick={() => void openWithReplacement(saved, mismatch)}
             >
               Use it anyway
             </button>

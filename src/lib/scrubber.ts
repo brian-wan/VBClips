@@ -5,7 +5,7 @@ import {
   clamp,
   clampToDuration,
   roundTime,
-  type Clip,
+  type Span,
 } from './clips'
 
 /** Pointer distance in px from a selected clip's edge that still grabs its trim handle. */
@@ -40,9 +40,10 @@ type HitInput = {
   x: number
   width: number
   duration: number
-  clips: readonly Clip[]
+  clips: readonly (Span & { id: string })[]
   selectedId: string | null
-  playhead: number
+  /** Local playhead time, or null when the playhead is in another source. */
+  playhead: number | null
 }
 
 /**
@@ -71,7 +72,9 @@ export function hitTest({
     }
   }
 
-  if (Math.abs(x - toX(playhead)) <= PLAYHEAD_HIT_PX) return { kind: 'playhead' }
+  if (playhead !== null && Math.abs(x - toX(playhead)) <= PLAYHEAD_HIT_PX) {
+    return { kind: 'playhead' }
+  }
 
   for (let i = clips.length - 1; i >= 0; i--) {
     const clip = clips[i]
@@ -86,7 +89,7 @@ export function hitTest({
  * The clip with one edge dragged toward `t`. The edge stops at the nearest time the clip editor
  * would accept (start ≥ 0, end ≤ duration, length ≥ 0.2 s) instead of jumping or vanishing.
  */
-export function trimClip(clip: Clip, edge: TrimEdge, t: number, duration: number): Clip {
+export function trimClip<C extends Span>(clip: C, edge: TrimEdge, t: number, duration: number): C {
   if (edge === 'start') {
     const start = clamp(roundTime(t), 0, clip.end - MIN_CLIP_LENGTH)
     return canSetStart(clip, start) ? { ...clip, start } : clip
@@ -95,6 +98,6 @@ export function trimClip(clip: Clip, edge: TrimEdge, t: number, duration: number
   return canSetEnd(clip, end, duration) ? { ...clip, end } : clip
 }
 
-export function edgeTime(clip: Clip, edge: TrimEdge): number {
+export function edgeTime(clip: Span, edge: TrimEdge): number {
   return edge === 'start' ? clip.start : clip.end
 }
