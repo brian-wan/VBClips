@@ -269,6 +269,14 @@ export function Editor({
     [playRange, sequenceStart],
   )
 
+  const selectedSourceIndex = selectedSource ? sources.indexOf(selectedSource) : -1
+  const seekInSelectedSource = useCallback(
+    (localTime: number) => {
+      if (selectedSourceIndex >= 0) seek(toSequence(sources, selectedSourceIndex, localTime))
+    },
+    [seek, sources, selectedSourceIndex],
+  )
+
   const exportJson = () => {
     if (sources.length === 0) return
     downloadJson(
@@ -277,13 +285,14 @@ export function Editor({
     )
   }
 
-  const pauseForDrag = () => {
-    resumeAfterDrag.current = !player.paused
-    player.pause()
-  }
-  const resumeAfterDragEnd = () => {
-    if (resumeAfterDrag.current) player.play()
-  }
+  const { pause, play, paused } = player
+  const pauseForDrag = useCallback(() => {
+    resumeAfterDrag.current = !paused
+    pause()
+  }, [paused, pause])
+  const resumeAfterDragEnd = useCallback(() => {
+    if (resumeAfterDrag.current) play()
+  }, [play])
 
   useEditorShortcuts({
     mark,
@@ -483,9 +492,13 @@ export function Editor({
               ref={editorRef}
               clip={selectedClip}
               number={selectedIndex + 1}
-              duration={selectedSource.duration}
-              playhead={currentSource?.id === selectedSource.id ? location.localTime : NaN}
+              source={selectedSource}
+              url={urls.get(selectedSource.id)}
+              playhead={currentSource?.id === selectedSource.id ? location.localTime : null}
+              onSeek={seekInSelectedSource}
               onChange={(clip) => dispatch({ type: 'updateClip', clip })}
+              onDragStart={pauseForDrag}
+              onDragEnd={resumeAfterDragEnd}
               onPreview={(clip) => {
                 const start = sequenceStart(clip)
                 player.playRange(start, start + (clip.end - clip.start))
