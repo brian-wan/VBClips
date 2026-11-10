@@ -498,14 +498,18 @@ overlap dot and the playhead head. All times use `font-variant-numeric: tabular-
   tints the background `rgba(255, 69, 58, 0.15)`. No filled red buttons anywhere.
 - `iconButton`: 32×32, 6px radius (not a circle), 18px glyphs, same hover.
 - Tooltips: 12px, 6px radius, shown after 300 ms, and they name the key as a chip: a `<kbd>`
-  element at 11px with a 1px separator border and 4px radius, e.g. "Play  K".
+  element at 11px with a 1px separator border and 4px radius, e.g. "Play  K". Tooltips are a small
+  `Tip` component rather than CSS on a data attribute, since a chip needs an element. Secondary
+  buttons that sit on a surface-colored panel use `--secondary-background`, one shade lighter, so
+  they stay visible.
 - `linkButton`: 13px.
 
 ### Screens
 
 - **Top bar**: 44px. "‹ Home" is a 13px secondary icon-and-text button. Center: file name 13px
   white, duration 12px secondary. Right: Join as a `primary` 32px button.
-- **Transport bar**: 48px. Play 36×36 square (6px radius) with a 20px glyph; the 5 s buttons and
+- **Transport bar**: 58px (a 40px mark button plus its 16px key chip and a 2px gap; 48px was
+  too short for that stack). Play 36×36 square (6px radius) with a 20px glyph; the 5 s buttons and
   "?" are 32px icon buttons; the clip navigation is one 32px group with 1px `--color-separator`
   dividers between prev, label and next, 6px radius on the group. The mark button stays round but
   shrinks to 40px with a 28px ring, and its "Space" caption becomes an 11px `<kbd>` chip under it.
