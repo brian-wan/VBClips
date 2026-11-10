@@ -50,6 +50,7 @@ class Extractor {
   private disposed = false
   private readonly sourceId: string
   private readonly onFrame: (key: string, frame: string) => void
+  private readonly onMiss: (key: string) => void
   private readonly has: (key: string) => boolean
 
   constructor(
@@ -57,11 +58,13 @@ class Extractor {
     url: string,
     has: (key: string) => boolean,
     onFrame: (key: string, frame: string) => void,
+    onMiss: (key: string) => void,
   ) {
     this.sourceId = sourceId
     this.url = url
     this.has = has
     this.onFrame = onFrame
+    this.onMiss = onMiss
     this.video.muted = true
     this.video.preload = 'metadata'
     this.ready = new Promise((resolve) => {
@@ -93,7 +96,14 @@ class Extractor {
     if (this.running) return
     this.running = true
     try {
-      if (!(await this.ready)) return
+      if (!(await this.ready)) {
+        for (const t of [...this.priorityQueue, ...this.queue]) {
+          this.onMiss(thumbKey(this.sourceId, t))
+        }
+        this.priorityQueue = []
+        this.queue = []
+        return
+      }
       while (!this.disposed) {
         const t = this.priorityQueue.shift() ?? this.queue.shift()
         if (t === undefined) break
@@ -105,7 +115,7 @@ class Extractor {
         else if (!this.retried.has(t)) {
           this.retried.add(t)
           this.queue.push(t)
-        }
+        } else this.onMiss(key)
       }
     } finally {
       this.running = false
@@ -151,8 +161,14 @@ class Extractor {
  * In-memory frame cache shared by the timeline and the trim strip, keyed by source id and time
  * rounded to a tenth of a second. Never persisted.
  */
+export type FrameProgress = { done: number; total: number }
+
 class ThumbnailStore {
   private readonly frames = new Map<string, string>()
+  /** Frames that failed twice; they count as done so progress can finish. */
+  private readonly missed = new Set<string>()
+  /** The timeline's latest wanted times per source. */
+  private readonly wanted = new Map<string, number[]>()
   private readonly extractors = new Map<string, Extractor>()
   private readonly listeners = new Set<Listener>()
   private version = 0
@@ -169,7 +185,24 @@ class ThumbnailStore {
     return this.frames.get(thumbKey(sourceId, t))
   }
 
+  /** How many of `times` have a frame (or have been given up on). */
+  progressOf(sourceId: string, times: readonly number[]): FrameProgress {
+    const keys = new Set(times.map((t) => thumbKey(sourceId, t)))
+    let done = 0
+    for (const key of keys) if (this.frames.has(key) || this.missed.has(key)) done++
+    return { done, total: keys.size }
+  }
+
+  /** Progress of the timeline's filmstrip frames for one source. */
+  progress(sourceId: string): FrameProgress {
+    return this.progressOf(sourceId, this.wanted.get(sourceId) ?? [])
+  }
+
   request(sourceId: string, url: string, times: readonly number[], priority = false) {
+    if (!priority) {
+      this.wanted.set(sourceId, [...times])
+      this.scheduleNotify()
+    }
     let extractor = this.extractors.get(sourceId)
     if (extractor && extractor.url !== url) {
       extractor.dispose()
@@ -184,6 +217,10 @@ class ThumbnailStore {
           this.frames.set(key, frame)
           this.scheduleNotify()
         },
+        (key) => {
+          this.missed.add(key)
+          this.scheduleNotify()
+        },
       )
       this.extractors.set(sourceId, extractor)
     }
@@ -196,6 +233,7 @@ class ThumbnailStore {
       if (ids.has(id)) continue
       extractor.dispose()
       this.extractors.delete(id)
+      this.wanted.delete(id)
     }
   }
 
@@ -226,4 +264,10 @@ export function useThumbnails(
       thumbnails.request(sourceId, url, timesKey.split(',').map(Number), priority)
   }, [sourceId, url, timesKey, priority])
   return times.map((t) => thumbnails.get(sourceId, t))
+}
+
+/** Timeline frames done and wanted for one source, updated as frames land. */
+export function useFrameProgress(sourceId: string): FrameProgress {
+  useSyncExternalStore(thumbnails.subscribe, thumbnails.getVersion)
+  return thumbnails.progress(sourceId)
 }

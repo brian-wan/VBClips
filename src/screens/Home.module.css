@@ -36,9 +36,31 @@
   max-width: 100%;
 }
 
+/* The opening line hangs under the control without moving the centered column. */
+.choose {
+  position: relative;
+}
+
 /* Doubled selector outranks the shared button height regardless of stylesheet order. */
-.page .choose {
+.page .chooseButton {
+  width: 100%;
   height: 36px;
+}
+
+.ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.openingLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  border-radius: 1px;
+  background: var(--color-surface-raised);
 }
 
 .error {
@@ -52,6 +74,7 @@
 }
 
 .card {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -76,7 +99,11 @@
   transition: opacity var(--motion);
 }
 
-.cardMain:active {
+.cardMain:disabled {
+  cursor: default;
+}
+
+.cardMain:active:not(:disabled) {
   opacity: var(--pressed-opacity);
 }
 
@@ -85,6 +112,7 @@
   flex-direction: column;
   gap: 2px;
   flex: 1;
+  min-width: 0;
 }
 
 .cardTitle {

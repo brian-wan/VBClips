@@ -14,7 +14,8 @@ import { edgeTime, trimClip, type TrimEdge } from '../../lib/scrubber'
 import type { SourceMeta } from '../../lib/session'
 import { formatTimePrecise } from '../../lib/time'
 import { handleAt, shouldRecenter, timeAtX, trimWindow, xOfTime } from '../../lib/trimmer'
-import { useThumbnails } from '../../media/thumbnails'
+import { ProgressLine } from '../../components/ProgressLine'
+import { thumbnails, useThumbnails } from '../../media/thumbnails'
 import styles from './ClipEditor.module.css'
 
 type Props = {
@@ -120,6 +121,7 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
   const shown = drag?.draft ?? clip
   const times = tileTimes(span.start, span.end, tileCount(width, TRIM_TILE_PX))
   const frames = useThumbnails(source.id, url, times, true)
+  const pending = thumbnails.progressOf(source.id, times)
 
   const localX = (e: PointerEvent<HTMLDivElement>) =>
     e.clientX - (trackRef.current?.getBoundingClientRect().left ?? 0)
@@ -214,6 +216,9 @@ export const ClipEditor = forwardRef<HTMLElement, Props>(function ClipEditor(
               style={{ left: percent(shown.end, span) }}
               aria-hidden="true"
             />
+            {pending.done < pending.total && (
+              <ProgressLine value={pending.done / pending.total} className={styles.framesLine} />
+            )}
           </div>
         </div>
         <div className={styles.labels}>

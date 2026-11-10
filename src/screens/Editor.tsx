@@ -20,6 +20,7 @@ import { useVideoPlayer } from '../hooks/useVideoPlayer'
 import { findOverlappingIds, totalClippedDuration, type Clip } from '../lib/clips'
 import { fingerprint } from '../lib/fingerprint'
 import { currentClipIndex, nextClipIndex, prevClipIndex } from '../lib/navigation'
+import { advanceOpening, openingLabel, startOpening, type Opening } from '../lib/opening'
 import { toSequence } from '../lib/sequence'
 import { initialSession, markEndProblem, sessionReducer } from '../lib/session'
 import { nextSpeed } from '../lib/speed'
@@ -110,6 +111,8 @@ export function Editor({
   const [speed, setSpeed] = useState(1)
   const [helpOpen, setHelpOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
+  /** Added files still being probed, for the plus tile. */
+  const [opening, setOpening] = useState<Opening | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [droppingFiles, setDroppingFiles] = useState(false)
   const [flash, setFlash] = useState<Flash | null>(null)
@@ -233,7 +236,20 @@ export function Editor({
       return true
     })
     if (duplicate) showToast('Already in the timeline')
-    const loaded = await Promise.all(fresh.map(loadSource))
+    if (fresh.length === 0) return
+    setOpening((current) =>
+      startOpening(
+        current,
+        fresh.map((f) => f.name),
+      ),
+    )
+    const loaded = await Promise.all(
+      fresh.map(async (file) => {
+        const source = await loadSource(file)
+        setOpening(advanceOpening)
+        return source
+      }),
+    )
     loaded.forEach((source, i) => {
       if (!source) {
         showToast(unplayableMessage(fresh[i].name), { timeout: 5000 })
@@ -439,6 +455,7 @@ export function Editor({
             onRemoveSource={removeSource}
             onMoveSource={(from, to) => dispatch({ type: 'moveSource', from, to })}
             onAddFiles={(picked) => void addFiles(picked)}
+            opening={opening && openingLabel(opening.names, opening.done)}
           />
 
           <TransportBar

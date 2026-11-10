@@ -7,7 +7,8 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
-import { Plus } from '../../components/Icons'
+import { Plus, Spinner } from '../../components/Icons'
+import { ProgressLine } from '../../components/ProgressLine'
 import { Tip } from '../../components/Tip'
 import ui from '../../components/ui.module.css'
 import type { Clip } from '../../lib/clips'
@@ -24,7 +25,7 @@ import {
 import { dropIndex, toSequence, type Location } from '../../lib/sequence'
 import type { OpenMarker, SourceMeta } from '../../lib/session'
 import { formatTime, formatTimePrecise } from '../../lib/time'
-import { useThumbnails } from '../../media/thumbnails'
+import { useFrameProgress, useThumbnails } from '../../media/thumbnails'
 import styles from './Timeline.module.css'
 
 type Props = {
@@ -47,6 +48,8 @@ type Props = {
   onRemoveSource: (id: string) => void
   onMoveSource: (from: number, to: number) => void
   onAddFiles: (files: File[]) => void
+  /** "Opening …" while added files are probed; the plus tile is busy meanwhile. */
+  opening: string | null
 }
 
 type StripDrag =
@@ -138,6 +141,20 @@ const Filmstrip = memo(function Filmstrip({
   )
 })
 
+/** "Preparing frames 12/25" and a 2px line along the header while a block's frames load. */
+function FrameProgress({ sourceId }: { sourceId: string }) {
+  const { done, total } = useFrameProgress(sourceId)
+  if (total === 0 || done >= total) return null
+  return (
+    <>
+      <span className={styles.frameCount}>
+        Preparing frames {done}/{total}
+      </span>
+      <ProgressLine value={done / total} className={styles.headerLine} />
+    </>
+  )
+}
+
 export function Timeline({
   sources,
   urls,
@@ -155,6 +172,7 @@ export function Timeline({
   onRemoveSource,
   onMoveSource,
   onAddFiles,
+  opening,
 }: Props) {
   const rowRef = useRef<HTMLDivElement>(null)
   const stripRefs = useRef(new Map<string, HTMLDivElement>())
@@ -418,6 +436,7 @@ export function Timeline({
     <>
       <span className={styles.name}>{source.name}</span>
       <span className={styles.blockDuration}>{formatTime(source.duration)}</span>
+      {removable && <FrameProgress sourceId={source.id} />}
       {removable && (
         <button
           type="button"
@@ -513,11 +532,13 @@ export function Timeline({
         <button
           type="button"
           className={`${styles.plus} ${ui.tip} ${ui.tipEnd}`}
-          aria-label="Add video"
+          aria-label={opening ?? 'Add video'}
+          aria-busy={opening !== null}
+          disabled={opening !== null}
           onClick={() => inputRef.current?.click()}
         >
-          <Plus size={20} />
-          <Tip label="Add video" />
+          {opening ? <Spinner size={20} className={ui.spin} /> : <Plus size={20} />}
+          <Tip label={opening ?? 'Add video'} />
         </button>
         <input
           ref={inputRef}

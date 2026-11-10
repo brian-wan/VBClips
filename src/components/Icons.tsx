@@ -39,6 +39,13 @@ export const Plus = (p: IconProps) => (
   </Svg>
 )
 
+/** Turns while something loads; the spin is in `ui.spin`. */
+export const Spinner = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 3a9 9 0 1 0 9 9" />
+  </Svg>
+)
+
 export const ListIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M9 6h11M9 12h11M9 18h11" />

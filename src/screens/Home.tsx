@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import type { EditorInput, LoadedSource } from '../App'
 import { ChevronRight, Trash, Volleyball } from '../components/Icons'
+import { ProgressLine } from '../components/ProgressLine'
 import { ShortcutsModal } from '../components/ShortcutsModal'
 import ui from '../components/ui.module.css'
 import { formatBytes } from '../lib/bytes'
 import { totalClippedDuration } from '../lib/clips'
 import { fingerprint } from '../lib/fingerprint'
+import { openingLabel, type Opening } from '../lib/opening'
 import { clearSessions, loadSession, type SavedSession } from '../lib/persistence'
 import { locate, toSequence } from '../lib/sequence'
 import { formatTime } from '../lib/time'
@@ -22,9 +24,15 @@ type Props = {
 
 type PickMode = 'new' | 'continue'
 
-/** Probes every file in order; reports the first one the browser cannot play. */
-async function loadAll(files: File[]): Promise<LoadedSource[] | string> {
-  const loaded = await Promise.all(files.map(loadSource))
+/** Probes every file; reports the first one the browser cannot play. */
+async function loadAll(files: File[], onEach: () => void): Promise<LoadedSource[] | string> {
+  const loaded = await Promise.all(
+    files.map(async (file) => {
+      const source = await loadSource(file)
+      onEach()
+      return source
+    }),
+  )
   const failed = loaded.findIndex((source) => source === null)
   if (failed >= 0) return unplayableMessage(files[failed].name)
   return loaded as LoadedSource[]
@@ -54,6 +62,8 @@ export function Home({ onOpen, error, onError }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [dragging, setDragging] = useState(false)
+  /** Files being probed and which control started it; both controls are disabled meanwhile. */
+  const [opening, setOpening] = useState<(Opening & { from: PickMode }) | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const pickMode = useRef<PickMode>('new')
 
@@ -62,6 +72,18 @@ export function Home({ onOpen, error, onError }: Props) {
     const timer = window.setTimeout(() => setConfirmDelete(false), 3000)
     return () => window.clearTimeout(timer)
   }, [confirmDelete])
+
+  /** Probes `files` while the control named by `from` shows the opening state. */
+  const probe = async (files: File[], from: PickMode) => {
+    setOpening({ names: files.map((f) => f.name), done: 0, from })
+    try {
+      return await loadAll(files, () =>
+        setOpening((current) => current && { ...current, done: current.done + 1 }),
+      )
+    } finally {
+      setOpening(null)
+    }
+  }
 
   const openPicker = (mode: PickMode) => {
     pickMode.current = mode
@@ -72,7 +94,7 @@ export function Home({ onOpen, error, onError }: Props) {
   }
 
   const openNew = async (file: File) => {
-    const loaded = await loadAll([file])
+    const loaded = await probe([file], 'new')
     if (typeof loaded === 'string') onError(loaded)
     else onOpen({ sources: loaded, clips: [], playhead: 0 })
   }
@@ -83,7 +105,7 @@ export function Home({ onOpen, error, onError }: Props) {
       const file = files.get(s.id)
       return file ? [file] : []
     })
-    const loaded = await loadAll(picked)
+    const loaded = await probe(picked, 'continue')
     if (typeof loaded === 'string') {
       onError(loaded)
       return
@@ -98,7 +120,7 @@ export function Home({ onOpen, error, onError }: Props) {
 
   /** "Use it anyway": the one saved source is replaced by a different file, clips and all. */
   const openWithReplacement = async (session: SavedSession, file: File) => {
-    const loaded = await loadAll([file])
+    const loaded = await probe([file], 'continue')
     if (typeof loaded === 'string') {
       onError(loaded)
       return
@@ -130,6 +152,7 @@ export function Home({ onOpen, error, onError }: Props) {
   }
 
   const handleFiles = (files: File[], mode: PickMode) => {
+    if (opening) return
     onError(null)
     if (files.length === 0) return
     const matchesSaved =
@@ -173,13 +196,25 @@ export function Home({ onOpen, error, onError }: Props) {
       <h1 className={styles.title}>VBClipper</h1>
       <p className={styles.subtitle}>Select a volleyball video to start clipping points</p>
 
-      <button
-        type="button"
-        className={`${ui.primary} ${styles.choose}`}
-        onClick={() => openPicker('new')}
-      >
-        Choose Video
-      </button>
+      <div className={styles.choose}>
+        <button
+          type="button"
+          className={`${ui.primary} ${styles.chooseButton}`}
+          disabled={opening !== null}
+          onClick={() => openPicker('new')}
+        >
+          <span className={styles.ellipsis}>
+            {opening?.from === 'new' ? openingLabel(opening.names, opening.done) : 'Choose Video'}
+          </span>
+        </button>
+        {opening?.from === 'new' && (
+          <ProgressLine
+            value={opening.names.length > 1 ? opening.done / opening.names.length : null}
+            className={styles.openingLine}
+            label="Opening video"
+          />
+        )}
+      </div>
       <input
         ref={inputRef}
         type="file"
@@ -201,9 +236,18 @@ export function Home({ onOpen, error, onError }: Props) {
 
       {saved && (
         <div className={styles.card}>
-          <button type="button" className={styles.cardMain} onClick={() => openPicker('continue')}>
+          <button
+            type="button"
+            className={styles.cardMain}
+            disabled={opening !== null}
+            onClick={() => openPicker('continue')}
+          >
             <span className={styles.cardText}>
-              <span className={styles.cardTitle}>Continue Session</span>
+              <span className={`${styles.cardTitle} ${styles.ellipsis}`}>
+                {opening?.from === 'continue'
+                  ? openingLabel(opening.names, opening.done)
+                  : 'Continue Session'}
+              </span>
               <span className={styles.cardSub}>
                 {saved.clips.length} {saved.clips.length === 1 ? 'clip' : 'clips'} ·{' '}
                 {formatTime(totalClippedDuration(saved.clips))} clipped
@@ -228,6 +272,13 @@ export function Home({ onOpen, error, onError }: Props) {
             >
               <Trash size={18} />
             </button>
+          )}
+          {opening?.from === 'continue' && (
+            <ProgressLine
+              value={opening.names.length > 1 ? opening.done / opening.names.length : null}
+              className={styles.openingLine}
+              label="Opening videos"
+            />
           )}
         </div>
       )}
