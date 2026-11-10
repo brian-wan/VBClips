@@ -800,7 +800,8 @@ installable as an app. It adds no backend, no accounts and no analytics.
   `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`,
   `X-Content-Type-Options: nosniff`; for `/assets/*`: `Cache-Control: public, max-age=31536000,
   immutable` (every asset name is hashed); a redirect `/* -> /index.html 200` so `/edit` reloads.
-- `vercel.json` with the same headers, cache rule and rewrite, so either host works unchanged.
+- Netlify is the one target. No `vercel.json` or other host files; the README mentions in one
+  sentence that any static host able to set the two headers and an SPA rewrite would also work.
 - `index.html` gains `<meta name="description">`, `<meta name="theme-color" content="#000000">`
   and the manifest link. `public/robots.txt` allows everything.
 - A direct load of `/edit` with no video shows Home (already the case); keep it.
@@ -835,8 +836,8 @@ installable as an app. It adds no backend, no accounts and no analytics.
 
 ### README
 
-- A "Deploy" section: fork or clone, connect the repo to Netlify or Vercel, the config file does
-  the rest; https is required; the two headers and why; what happens on a host that cannot set
+- A "Deploy" section for Netlify: push the repo to GitHub, "Add new site" from that repo, and
+  `netlify.toml` does the rest (build command, publish folder, headers, rewrite); https is required; the two headers and why; what happens on a host that cannot set
   headers (single-thread core, slower Precise); the 32 MB first-visit download and that it is
   cached by the browser and the service worker; bandwidth math for free tiers (about 3,000
   first-time visitors per 100 GB).
@@ -851,5 +852,5 @@ installable as an app. It adds no backend, no accounts and no analytics.
   `navigator.serviceWorker.ready` and the manifest fetch), a reload of `/edit` under preview still
   lands on Home, and after one Join the core request is served from the cache on the second join
   (observe via `performance.getEntriesByType('resource')` transfer sizes). Validate `netlify.toml`
-  and `vercel.json` by reading them against the hosts' documented schemas; no account is created.
+  by reading it against Netlify's documented schema; no account is created.
 - Whole suite, lint, typecheck, format check pass.
