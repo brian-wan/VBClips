@@ -37,8 +37,9 @@ clears the saved session (confirm with a small inline "Delete?" state, not `wind
 A blue "How it works" link opens a modal listing the shortcuts (see Shortcuts).
 
 Choose Video opens a file picker (`accept="video/*"`). Drag and drop onto the page also works.
-If the browser cannot play the file (`canPlayType` empty, or the `error` event fires),
-show a clear message naming the file and suggesting mp4/H.264 or webm.
+If the browser cannot play the file (the video element fires `error`),
+show a clear message naming the file and suggesting mp4/H.264, mov or webm. Do not pre-reject
+on `canPlayType`: Chrome answers empty for `video/quicktime` yet plays H.264 mov files.
 
 Continue Session: the browser cannot reopen a file by itself, so the card asks the user to
 pick the same file again. If the picked file's fingerprint does not match, show

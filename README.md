@@ -29,7 +29,7 @@ Then open the URL Vite prints (usually http://localhost:5173).
 ## Using it
 
 1. Choose Video (or drop a video file on the page). MP4 (H.264) and WebM play in all modern
-   browsers.
+   browsers. MOV plays in Chrome and Safari.
 2. Press Space when a point starts and again when it ends. Each pair saves a clip.
 3. Review and fix clips in the sidebar, then use Join in the top bar to render one video, or
    Export JSON to download the markers.

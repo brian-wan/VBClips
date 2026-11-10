@@ -1,10 +1,12 @@
 export function unplayableMessage(fileName: string): string {
-  return `“${fileName}” can’t be played in this browser. Try an MP4 (H.264) or WebM video.`
+  return `“${fileName}” can’t be played in this browser. Try an MP4 (H.264), MOV or WebM video.`
 }
 
-/** False only when the browser says outright it cannot play the file's declared type. */
+/**
+ * False only for files whose declared type is not video at all. Container types such as
+ * `video/quicktime` get an empty `canPlayType` answer in Chrome even when the codecs inside
+ * play fine, so the real test is the video element's `error` event after loading.
+ */
 export function canProbablyPlay(file: File): boolean {
-  if (!file.type) return true
-  if (!file.type.startsWith('video/')) return false
-  return document.createElement('video').canPlayType(file.type) !== ''
+  return !file.type || file.type.startsWith('video/')
 }
