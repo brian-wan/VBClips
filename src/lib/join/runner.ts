@@ -1,15 +1,20 @@
 import {
   CONCAT_LIST,
+  PROBE_FILE,
   concatArgs,
+  concatDurations,
   concatListContent,
   inputPath,
   mountPoint,
+  parseProbe,
+  probeArgs,
   segmentArgs,
   segmentFileName,
   segmentRatio,
   totalDuration,
   type JoinMode,
   type Segment,
+  type SegmentTiming,
 } from './plan'
 import type { KeyValueStore } from '../persistence'
 import { FALLBACK_LABEL, JoinProgress, loadRates, saveRates, type Rates } from './progress'
@@ -57,6 +62,8 @@ export interface FFmpegLike {
   mount(file: File, mountPoint: string): Promise<void>
   unmount(mountPoint: string): Promise<void>
   exec(args: string[]): Promise<number>
+  /** Runs the core's ffprobe. Core 0.12.10 resolves to -1 even when the probe worked. */
+  ffprobe(args: string[]): Promise<number>
   readFile(path: string): Promise<Uint8Array>
   writeFile(path: string, data: string): Promise<void>
   deleteFile(path: string): Promise<void>
@@ -300,9 +307,29 @@ export async function runJoin({
   }
   const segmentFiles = segments.map((_, i) => segmentFileName(i))
 
+  /**
+   * The written segment's timing, for its line in the concat list. A probe that fails costs
+   * only that line's `duration`, never the join; a terminated core still fails it. The core's
+   * ffprobe reports -1 whether or not it worked, so the JSON it writes decides.
+   */
+  const probeSegment = async (index: number): Promise<SegmentTiming | null> => {
+    const removeProbe = () => ffmpeg.deleteFile(PROBE_FILE).catch(() => undefined)
+    try {
+      await removeProbe()
+      await ffmpeg.ffprobe(probeArgs(index))
+      return parseProbe(new TextDecoder().decode(await ffmpeg.readFile(PROBE_FILE)))
+    } catch (error) {
+      if (signal?.aborted || stalled) throw error
+      return null
+    } finally {
+      await removeProbe()
+    }
+  }
+
   /** What is mounted: the staged copies, or the originals when staging was not possible. */
   let inputs: readonly File[] = files
   const render = async (renderMode: JoinMode): Promise<boolean> => {
+    const timings: (SegmentTiming | null)[] = []
     for (const [i, seg] of segments.entries()) {
       const file = inputs[seg.sourceIndex]
       if (!file) {
@@ -321,8 +348,9 @@ export async function runJoin({
           renderMode === 'fast',
         )
       }
+      timings.push(await probeSegment(i))
     }
-    await ffmpeg.writeFile(CONCAT_LIST, concatListContent(segments.length))
+    await ffmpeg.writeFile(CONCAT_LIST, concatListContent(concatDurations(timings)))
     model.concat(0, now())
     emit({ segmentIndex: segments.length - 1 })
     const code = await ffmpeg.exec(concatArgs(OUTPUT))

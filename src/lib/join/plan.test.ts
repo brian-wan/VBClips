@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   concatArgs,
+  concatDurations,
   concatListContent,
   estimateOutputBytes,
   estimateSeconds,
@@ -8,7 +9,9 @@ import {
   inputPath,
   mountPoint,
   outputFileName,
+  parseProbe,
   planSegments,
+  probeArgs,
   segmentArgs,
   segmentRatio,
 } from './plan'
@@ -109,8 +112,16 @@ describe('segmentArgs', () => {
 })
 
 describe('concat', () => {
-  it('lists every segment file in order', () => {
-    expect(concatListContent(3)).toBe("file 'seg0.mp4'\nfile 'seg1.mp4'\nfile 'seg2.mp4'\n")
+  it('lists every segment file in order, each with its duration to three decimals', () => {
+    expect(concatListContent([12.3, 6.0333333, 4.8])).toBe(
+      "file 'seg0.mp4'\nduration 12.300\nfile 'seg1.mp4'\nduration 6.033\nfile 'seg2.mp4'\nduration 4.800\n",
+    )
+  })
+
+  it('leaves out the duration of an entry that has none', () => {
+    expect(concatListContent([null, 6, null])).toBe(
+      "file 'seg0.mp4'\nfile 'seg1.mp4'\nduration 6.000\nfile 'seg2.mp4'\n",
+    )
   })
 
   it('uses the concat demuxer with stream copy', () => {
@@ -206,5 +217,92 @@ describe('segmentRatio', () => {
   it('clamps to 0..1', () => {
     expect(segmentRatio(-5, seg)).toBe(0)
     expect(segmentRatio(50_000_000, seg)).toBe(1)
+  })
+})
+
+describe('segment probe', () => {
+  it('asks ffprobe for the container start and the video start and length as JSON', () => {
+    expect(probeArgs(2)).toEqual([
+      ...[
+        '-v',
+        'error',
+        '-show_entries',
+        'format=start_time:stream=codec_type,start_time,duration',
+      ],
+      ...['-of', 'json', 'seg2.mp4', '-o', 'probe.json'],
+    ])
+  })
+
+  it('reads the video stream and the container start from the JSON', () => {
+    const json = JSON.stringify({
+      programs: [],
+      streams: [
+        { codec_type: 'audio', start_time: '0.000000', duration: '12.353016' },
+        { codec_type: 'video', start_time: '0.030013', duration: '12.300000' },
+      ],
+      format: { start_time: '0.000000' },
+    })
+    expect(parseProbe(json)).toEqual({
+      containerStart: 0,
+      videoStart: 0.030013,
+      videoDuration: 12.3,
+    })
+  })
+
+  it('gives null for output it cannot use', () => {
+    const audioOnly = { streams: [{ codec_type: 'audio', start_time: '0', duration: '3' }] }
+    const noStart = {
+      streams: [{ codec_type: 'video', start_time: 'N/A', duration: '3' }],
+      format: { start_time: '0' },
+    }
+    const empty = {
+      streams: [{ codec_type: 'video', start_time: '0', duration: '0' }],
+      format: { start_time: '0' },
+    }
+    expect(parseProbe('')).toBeNull()
+    expect(parseProbe('{"streams": [')).toBeNull()
+    expect(parseProbe(JSON.stringify(audioOnly))).toBeNull()
+    expect(parseProbe(JSON.stringify(noStart))).toBeNull()
+    expect(parseProbe(JSON.stringify(empty))).toBeNull()
+  })
+})
+
+describe('concatDurations', () => {
+  const timing = (containerStart: number, videoStart: number, videoDuration: number) => ({
+    containerStart,
+    videoStart,
+    videoDuration,
+  })
+
+  it('places each next video one video length after this one starts', () => {
+    // Video leads of 30 ms and 10 ms over the audio: the first entry is 20 ms longer than its
+    // video so that the second video starts right after it.
+    const durations = concatDurations([timing(0, 0.03, 10.3), timing(0, 0.01, 30.2)])
+    expect(durations[0]).toBeCloseTo(10.32, 9)
+    expect(durations[1]).toBeCloseTo(30.2, 9)
+  })
+
+  it('counts leads from the container start, which is the audio start when audio leads', () => {
+    // Precise segments: video always at 0.066 s, audio from 0.043 s or 0.010 s.
+    const durations = concatDurations([timing(0.043, 0.066, 6), timing(0.01, 0.066, 6)])
+    expect(durations[0]).toBeCloseTo(5.967, 9)
+  })
+
+  it('uses the probed video length for a clip that is not a whole number of frames', () => {
+    // A 4.79 s Precise clip at 30 fps holds 144 frames, so its video runs 4.800 s, not 4.79.
+    const durations = concatDurations([timing(0.01, 0.066, 4.8), timing(0.01, 0.066, 6)])
+    expect(durations[0]).toBeCloseTo(4.8, 9)
+  })
+
+  it('gives the last entry its own video length', () => {
+    expect(concatDurations([timing(0, 0.02, 5), timing(0.01, 0.04, 7)])[1]).toBeCloseTo(7, 9)
+  })
+
+  it('gives null for an unprobed entry and uses its own lead before one', () => {
+    expect(concatDurations([timing(0, 0.03, 5), null, timing(0, 0.01, 4)])).toEqual([5, null, 4])
+  })
+
+  it('gives null rather than a duration that is not positive', () => {
+    expect(concatDurations([timing(0, 0, 0.01), timing(0, 0.5, 2)])).toEqual([null, 2])
   })
 })

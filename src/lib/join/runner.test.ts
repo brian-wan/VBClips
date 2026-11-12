@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { segmentArgs, type Segment } from './plan'
+import { probeArgs, segmentArgs, type Segment } from './plan'
 import { RATES_KEY } from './progress'
 import {
   FALLBACK_REASON,
@@ -22,6 +22,21 @@ import {
 
 type Call = { method: string; args: unknown[] }
 type ExecHandler = (args: string[], fake: FakeFFmpeg) => number | Promise<number>
+/**
+ * What ffprobe of a segment does: write this JSON, or write nothing and exit with this code.
+ * Like the real core, a probe that writes JSON still exits -1.
+ */
+type ProbeHandler = (segment: string) => string | number | Promise<string | number>
+
+/** ffprobe's JSON for a segment whose video starts `videoStart` s after time 0. */
+const probeJson = (containerStart: number, videoStart: number, videoDuration: number) =>
+  JSON.stringify({
+    streams: [
+      { codec_type: 'video', start_time: String(videoStart), duration: String(videoDuration) },
+      { codec_type: 'audio', start_time: String(containerStart), duration: '1.000000' },
+    ],
+    format: { start_time: String(containerStart) },
+  })
 
 class FakeFFmpeg implements FFmpegLike {
   calls: Call[] = []
@@ -36,6 +51,8 @@ class FakeFFmpeg implements FFmpegLike {
   private pending: ((reason: Error) => void)[] = []
 
   private handler: ExecHandler
+  /** Exits 1 unless a test sets it, so the concat list has no durations. */
+  probe: ProbeHandler = () => 1
 
   constructor(handler: ExecHandler = () => 0) {
     this.handler = handler
@@ -96,10 +113,24 @@ class FakeFFmpeg implements FFmpegLike {
       }, reject)
     })
   }
+  ffprobe(args: string[]): Promise<number> {
+    this.record('ffprobe', args)
+    return new Promise((resolve, reject) => {
+      this.pending.push(reject)
+      const segment = args[args.indexOf('-o') - 1] ?? ''
+      Promise.resolve(this.probe(segment)).then((result) => {
+        if (typeof result === 'number') return resolve(result)
+        this.files.set(args.at(-1) ?? '', result)
+        resolve(-1)
+      }, reject)
+    })
+  }
   readFile(path: string) {
     this.record('readFile', path)
-    if (!this.files.has(path)) return Promise.reject(new Error(`missing ${path}`))
-    return Promise.resolve(new Uint8Array([1, 2, 3, 4]))
+    const content = this.files.get(path)
+    if (content === undefined) return Promise.reject(new Error(`missing ${path}`))
+    if (content === 'data') return Promise.resolve(new Uint8Array([1, 2, 3, 4]))
+    return Promise.resolve(new TextEncoder().encode(content))
   }
   writeFile(path: string, data: string) {
     this.record('writeFile', path, data)
@@ -161,6 +192,103 @@ describe('runJoin', () => {
       args: ['list.txt', "file 'seg0.mp4'\nfile 'seg1.mp4'\n"],
     })
     expect(ffmpeg.methods().at(-1)).toBe('unmount')
+  })
+
+  it('probes each segment after its cut and lines the next video up in the concat list', async () => {
+    const ffmpeg = new FakeFFmpeg()
+    // Fast cuts start at a keyframe, so segment 0 holds 10.3 s of video 30 ms after its audio.
+    const timings: Record<string, string> = {
+      'seg0.mp4': probeJson(0, 0.03, 10.3),
+      'seg1.mp4': probeJson(0, 0.01, 30.2),
+    }
+    ffmpeg.probe = (segment) => timings[segment] ?? 1
+    await run({ ffmpeg, files, segments, mode: 'fast' })
+
+    const order = ffmpeg.calls
+      .filter((c) => c.method === 'exec' || c.method === 'ffprobe')
+      .map((c) => `${c.method} ${(c.args[0] as string[]).at(-1) ?? ''}`)
+    expect(order).toEqual([
+      'exec seg0.mp4',
+      'ffprobe probe.json',
+      'exec seg1.mp4',
+      'ffprobe probe.json',
+      'exec out.mp4',
+    ])
+    expect(ffmpeg.calls.filter((c) => c.method === 'ffprobe').map((c) => c.args[0])).toEqual([
+      probeArgs(0),
+      probeArgs(1),
+    ])
+    expect(ffmpeg.calls).toContainEqual({
+      method: 'writeFile',
+      args: ['list.txt', "file 'seg0.mp4'\nduration 10.320\nfile 'seg1.mp4'\nduration 30.200\n"],
+    })
+    expect([...ffmpeg.files.keys()]).toEqual([])
+  })
+
+  it('probes Precise segments too', async () => {
+    const ffmpeg = new FakeFFmpeg()
+    ffmpeg.probe = (segment) =>
+      segment === 'seg0.mp4' ? probeJson(0.043, 0.066, 10) : probeJson(0.01, 0.066, 30)
+    await run({ ffmpeg, files, segments, mode: 'precise' })
+    expect(ffmpeg.calls).toContainEqual({
+      method: 'writeFile',
+      args: ['list.txt', "file 'seg0.mp4'\nduration 9.967\nfile 'seg1.mp4'\nduration 30.000\n"],
+    })
+  })
+
+  it('writes no duration for a segment whose probe fails, and still joins', async () => {
+    const ffmpeg = new FakeFFmpeg()
+    ffmpeg.probe = (segment) => {
+      if (segment === 'seg0.mp4') return 1
+      if (segment === 'seg1.mp4') return 'not json'
+      return probeJson(0, 0, 5)
+    }
+    const third: Segment = { sourceIndex: 0, start: 60, end: 65 }
+    const blob = await run({ ffmpeg, files, segments: [first, second, third], mode: 'fast' })
+    expect(blob.size).toBe(4)
+    expect(ffmpeg.calls).toContainEqual({
+      method: 'writeFile',
+      args: ['list.txt', "file 'seg0.mp4'\nfile 'seg1.mp4'\nfile 'seg2.mp4'\nduration 5.000\n"],
+    })
+    expect([...ffmpeg.files.keys()]).toEqual([])
+  })
+
+  it('treats a probe that throws like a failed one', async () => {
+    const ffmpeg = new FakeFFmpeg()
+    ffmpeg.probe = () => Promise.reject(new Error('probe crashed'))
+    const blob = await run({ ffmpeg, files, segments, mode: 'fast' })
+    expect(blob.size).toBe(4)
+  })
+
+  it('stops when Stop lands during a probe', async () => {
+    const controller = new AbortController()
+    const ffmpeg = new FakeFFmpeg()
+    ffmpeg.probe = () => {
+      controller.abort()
+      return new Promise<number>(() => undefined)
+    }
+    const joining = run({ ffmpeg, files, segments, mode: 'fast', signal: controller.signal })
+    await expect(joining).rejects.toBeInstanceOf(JoinCancelled)
+    expect(ffmpeg.execArgs()).toHaveLength(1)
+  })
+
+  it('finishes when the concat logs the expected Non-monotonic DTS warning', async () => {
+    const warning =
+      '[mp4 @ 0x1] Non-monotonic DTS in output stream 0:1; previous: 529152, current: 529151; changing to 529153.'
+    const ffmpeg = new FakeFFmpeg((args, fake) => {
+      if (isConcat(args)) fake.emitLog(warning)
+      return 0
+    })
+    const events: JoinEvent[] = []
+    const blob = await run({
+      ffmpeg,
+      files,
+      segments,
+      mode: 'fast',
+      onEvent: (e) => events.push(e),
+    })
+    expect(blob.size).toBe(4)
+    expect(events.at(-1)?.phase).toBe('done')
   })
 
   it('mounts every source and cuts segments from their own source in sequence order', async () => {

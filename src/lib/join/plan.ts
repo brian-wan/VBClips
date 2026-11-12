@@ -70,8 +70,68 @@ export function segmentArgs(mode: JoinMode, seg: Span, index: number, input: str
   ]
 }
 
-export function concatListContent(count: number): string {
-  return Array.from({ length: count }, (_, i) => `file '${segmentFileName(i)}'\n`).join('')
+/** Where the probe of a segment writes its JSON. */
+export const PROBE_FILE = 'probe.json'
+
+/** ffprobe arguments that write the container start and the video stream's start and length. */
+export function probeArgs(index: number): string[] {
+  return [
+    ...['-v', 'error', '-show_entries', 'format=start_time:stream=codec_type,start_time,duration'],
+    ...['-of', 'json', segmentFileName(index), '-o', PROBE_FILE],
+  ]
+}
+
+/** Seconds, as the segment file stores them. */
+export type SegmentTiming = { containerStart: number; videoStart: number; videoDuration: number }
+
+type ProbeJson = {
+  format?: { start_time?: string }
+  streams?: { codec_type?: string; start_time?: string; duration?: string }[]
+}
+
+/** The timing in ffprobe's JSON output, or null when any of it is missing. */
+export function parseProbe(json: string): SegmentTiming | null {
+  let parsed: ProbeJson
+  try {
+    parsed = JSON.parse(json) as ProbeJson
+  } catch {
+    return null
+  }
+  const video = parsed.streams?.find((stream) => stream.codec_type === 'video')
+  const timing = {
+    containerStart: Number(parsed.format?.start_time),
+    videoStart: Number(video?.start_time),
+    videoDuration: Number(video?.duration),
+  }
+  const valid = Object.values(timing).every((n) => Number.isFinite(n))
+  return valid && timing.videoDuration > 0 ? timing : null
+}
+
+/**
+ * The `duration` of each concat entry, or null to let the demuxer use the container length.
+ * The demuxer lines a file up by its container start, which is the audio's when audio starts
+ * first, so the video of the next file must land one video length after this file's video
+ * starts: its duration is this video's length plus this file's video lead over its container
+ * start, minus the next file's lead. Without the next file's timing this file's own lead stands
+ * in for it.
+ */
+export function concatDurations(timings: readonly (SegmentTiming | null)[]): (number | null)[] {
+  const lead = (timing: SegmentTiming) => timing.videoStart - timing.containerStart
+  return timings.map((timing, i) => {
+    if (!timing) return null
+    const next = timings[i + 1] ?? timing
+    const duration = timing.videoDuration + lead(timing) - lead(next)
+    return duration > 0 ? duration : null
+  })
+}
+
+export function concatListContent(durations: readonly (number | null)[]): string {
+  return durations
+    .map((duration, i) => {
+      const entry = `file '${segmentFileName(i)}'\n`
+      return duration === null ? entry : `${entry}duration ${duration.toFixed(3)}\n`
+    })
+    .join('')
 }
 
 export function concatArgs(output: string): string[] {

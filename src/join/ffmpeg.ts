@@ -222,6 +222,7 @@ export type FFmpegCore = Pick<
   | 'loaded'
   | 'load'
   | 'exec'
+  | 'ffprobe'
   | 'readFile'
   | 'writeFile'
   | 'deleteFile'
@@ -363,6 +364,10 @@ export class BrowserFFmpeg implements FFmpegLike {
 
   exec(args: string[]) {
     return this.ffmpeg.exec(args)
+  }
+
+  ffprobe(args: string[]) {
+    return this.ffmpeg.ffprobe(args)
   }
 
   async readFile(path: string) {
