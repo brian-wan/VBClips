@@ -1037,8 +1037,9 @@ spread across it) and an 8-minute 1080p60 one (eight clips), both join modes.
   `-i seg<i>.mp4 -an -c copy -f null -` and takes the video duration from the last `progress`
   event's `time` (microseconds) of that pass. It copies a few seconds of video to nowhere and
   takes tens of milliseconds; it is part of the `cut` phase and emits no label of its own.
-- Measured natively with this list: Precise joins have one identical frame interval throughout
-  and the exact selected duration; Fast joins hold at most 14 ms at a cut instead of 60. The
+- Measured in the real core with this list: Precise and Fast joins are seamless at 30 and 60 fps
+  (one identical frame interval across every cut), and the screen recording still passes through
+  at its own timing (261 frames). The
   audio overlaps the next segment by at most one 23 ms AAC frame at each cut; ffmpeg adjusts the
   timestamp by one tick and logs "Non-monotonic DTS", which is expected and not an error. The
   dialog's error path must not treat that log line as a failure.
