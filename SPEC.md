@@ -35,6 +35,8 @@ decisions. If something here is impossible, say so in the report instead of impr
 8. Fast file access for Join: stage the source in the browser's private file system, and keep
    variable frame rate in Precise. Details in "Phase 8: Join speed" below.
 9. Phones and tablets: a single-column touch layout. Details in "Phase 9: Mobile" below.
+10. Seamless cuts: no frame holds at join points, verified on a 25-minute recording. Details in
+    "Phase 10: Seamless cuts" below.
 
 ## Screens
 
@@ -1004,3 +1006,59 @@ the join or the shortcuts changes; keyboard shortcuts keep working when a keyboa
   transport bar and sidebar before and after).
 - A real iPhone or Android check is the user's; list what to look at in the report (safe-area
   fit, the Photos picker, join memory).
+
+## Phase 10: Seamless cuts
+
+Settled, from a stress test on a generated 25-minute 1080p30 recording with audio (ten 12 s clips
+spread across it) and an 8-minute 1080p60 one (eight clips), both join modes.
+
+### The problem
+
+- Inside every clip the timing is exact: Precise produced 3600 frames for 120 s at a constant
+  33.33 ms, Fast kept the source's intervals, and audio and video stay in sync. No slow motion,
+  no duplicated or dropped frames.
+- At every join point the video holds for an extra 2 to 3 frames: 60 to 70 ms in Fast, about
+  100 ms in Precise (50 ms at 60 fps). Cause: the concat demuxer offsets each segment by the
+  segment's container duration, and each segment's AAC audio runs 14 to 39 ms past its video (AAC
+  frames are 23 ms and Precise segments also carry encoder priming), so the next segment starts
+  late and the last frame is held. Over ten cuts the output ends about half a second after where
+  the clips alone would, and a viewer sees a stutter at every cut.
+- A single-pass encode through the `concat` filter (several `-ss/-to -i` inputs) fixes this
+  natively but hung inside ffmpeg.wasm (idle for ten minutes on four inputs), so it is not used.
+
+### The fix: exact durations in the concat list
+
+- `concatListContent` takes the segments' video durations and writes
+  `file 'seg<i>.mp4'` followed by `duration <seconds>` (three decimals) for each entry, so the
+  demuxer offsets every segment by its video length, not its container length.
+- Precise: the duration is the clip's exact length, `end - start`, since the cut is frame exact.
+- Fast: the segment's video length is not known in advance (the cut starts at the keyframe before
+  `start`). After each Fast segment is written, the runner runs a measuring pass
+  `-i seg<i>.mp4 -an -c copy -f null -` and takes the video duration from the last `progress`
+  event's `time` (microseconds) of that pass. It copies a few seconds of video to nowhere and
+  takes tens of milliseconds; it is part of the `cut` phase and emits no label of its own.
+- Measured natively with this list: Precise joins have one identical frame interval throughout
+  and the exact selected duration; Fast joins hold at most 14 ms at a cut instead of 60. The
+  audio overlaps the next segment by at most one 23 ms AAC frame at each cut; ffmpeg adjusts the
+  timestamp by one tick and logs "Non-monotonic DTS", which is expected and not an error. The
+  dialog's error path must not treat that log line as a failure.
+
+### Stress script
+
+- `scripts/stress-join.mjs` (developer tool, not CI): generates a 25-minute 1080p30 and an
+  8-minute 1080p60 test recording with ffmpeg if absent (under the OS temp directory, never in the
+  repo), serves `pnpm preview`, drives headless Chrome over CDP to join ten (or eight) clips in
+  both modes, and runs the checks with ffprobe: every video interval equals the frame interval
+  within 1 ms except none, no duplicate timestamps, container and audio durations within 25 ms of
+  the video, Precise total equal to the selected total within 5 ms, Fast total equal to the
+  selected total plus keyframe leads within 50 ms, and frame content at 4 s into every clip
+  matching the source frame (SSIM at least 0.98). It prints a table and exits non-zero on any
+  failure. README gets one paragraph on running it.
+
+### Verification
+
+- Unit tests for the list content with durations and for the Fast measuring pass (fake ffmpeg
+  emitting a final progress time). Whole suite, lint, typecheck, format, build.
+- `scripts/stress-join.mjs` passes on both recordings; report the table. Also re-run the
+  screen-recording check from Phase 8 (Precise 261 frames, timing identical to the source) to
+  make sure variable frame rate still passes through.
