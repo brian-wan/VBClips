@@ -120,6 +120,17 @@ If Fast cannot combine the clips (usually because their codec settings differ, a
 from different cameras), the join switches to Precise on its own and says why. The joined file is assembled in browser memory, so Join refuses
 selections whose output would exceed about 1.5 GB.
 
+To check that joins stay seamless, run `node scripts/stress-join.mjs` (macOS with Google Chrome,
+and `ffmpeg`/`ffprobe` on the `PATH` or named by `FFMPEG`/`FFPROBE`). It generates a 25-minute
+1080p30 and an 8-minute 1080p60 test recording under the OS temp directory the first time (a few
+minutes; `--media <dir>` points it at existing `long30.mp4`/`long60.mp4`), builds the app, serves
+it with `pnpm preview` (`--port` if 4173 is taken), joins ten and eight spread clips in both modes
+in headless Chrome, and checks each output with ffprobe: one frame interval across every cut, no
+duplicate timestamps, audio and container ending with the video, the expected total length, and
+the frame 4 s into each clip matching the source (SSIM). It prints a table and exits non-zero on
+any failure; `--only 30|60` and `--modes fast` run part of it, and `--check-only --out <dir>`
+re-checks earlier outputs without joining. It is a developer tool, not part of CI.
+
 ## Keyboard shortcuts
 
 | Key                          | Action                                               |
