@@ -1043,7 +1043,9 @@ spread across it) and an 8-minute 1080p60 one (eight clips), both join modes.
   `lead = video start - container start` (the last segment uses its own lead). `FFmpegLike` gains
   `ffprobe(args)` and the runner reads the JSON it writes. The probe is part of the `cut` phase and
   emits no label of its own. A probe failure falls back to no `duration` line for that entry (the
-  old behavior), never to a failed join.
+  old behavior), never to a failed join; when the next segment's probe failed, the entry uses its
+  own lead in place of the next one's. Core 0.12.10's `ffprobe` returns exit code -1 even on
+  success, so the runner judges a probe by whether its JSON parses, never by the exit code.
 - Measured in the real core with this list: Precise and Fast joins are seamless at 30 and 60 fps
   (one identical frame interval across every cut), and the screen recording still passes through
   at its own timing (261 frames). The
@@ -1057,7 +1059,7 @@ spread across it) and an 8-minute 1080p60 one (eight clips), both join modes.
   8-minute 1080p60 test recording with ffmpeg if absent (under the OS temp directory, never in the
   repo), serves `pnpm preview`, drives headless Chrome over CDP to join ten (or eight) clips in
   both modes, and runs the checks with ffprobe: every video interval equals the frame interval
-  within 1 ms except none, no duplicate timestamps, container and audio durations within 25 ms of
+  within 1 ms (Fast varies by up to 0.07 ms from three-decimal durations), no duplicate timestamps, container and audio durations within 25 ms of
   the video, Precise total equal to the selected total within 5 ms, Fast total equal to the
   selected total plus keyframe leads within 50 ms, and frame content at 4 s into every clip
   matching the source frame: for Fast, SSIM at least 0.98 (a stream copy is pixel identical); for
