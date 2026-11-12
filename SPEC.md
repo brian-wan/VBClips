@@ -1065,8 +1065,8 @@ spread across it) and an 8-minute 1080p60 one (eight clips), both join modes.
 
 ### Verification
 
-- Unit tests for the list content with durations and for the Fast measuring pass (fake ffmpeg
-  emitting a final progress time). Whole suite, lint, typecheck, format, build.
+- Unit tests for the list content with durations and for the per-segment probe (a fake `ffprobe`
+  that writes JSON), including a clip that is not a whole number of frames. Whole suite, lint, typecheck, format, build.
 - `scripts/stress-join.mjs` passes on both recordings; report the table. Also re-run the
   screen-recording check from Phase 8 (Precise 261 frames, timing identical to the source) to
   make sure variable frame rate still passes through.
