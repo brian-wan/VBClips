@@ -1060,7 +1060,10 @@ spread across it) and an 8-minute 1080p60 one (eight clips), both join modes.
   within 1 ms except none, no duplicate timestamps, container and audio durations within 25 ms of
   the video, Precise total equal to the selected total within 5 ms, Fast total equal to the
   selected total plus keyframe leads within 50 ms, and frame content at 4 s into every clip
-  matching the source frame (SSIM at least 0.98). It prints a table and exits non-zero on any
+  matching the source frame: for Fast, SSIM at least 0.98 (a stream copy is pixel identical); for
+  Precise, SSIM at least 0.97 and higher than against both neighbouring source frames, which
+  proves alignment without grading the encoder (a CRF 20 veryfast re-encode of the generated
+  test pattern scores 0.978 to 0.99 against its own exact frame). It prints a table and exits non-zero on any
   failure. README gets one paragraph on running it.
 
 ### Verification
