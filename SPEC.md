@@ -1031,12 +1031,19 @@ spread across it) and an 8-minute 1080p60 one (eight clips), both join modes.
 - `concatListContent` takes the segments' video durations and writes
   `file 'seg<i>.mp4'` followed by `duration <seconds>` (three decimals) for each entry, so the
   demuxer offsets every segment by its video length, not its container length.
-- Precise: the duration is the clip's exact length, `end - start`, since the cut is frame exact.
-- Fast: the segment's video length is not known in advance (the cut starts at the keyframe before
-  `start`). After each Fast segment is written, the runner runs a measuring pass
-  `-i seg<i>.mp4 -an -c copy -f null -` and takes the video duration from the last `progress`
-  event's `time` (microseconds) of that pass. It copies a few seconds of video to nowhere and
-  takes tens of milliseconds; it is part of the `cut` phase and emits no label of its own.
+- The duration must come from measurement, not formulas. Two formulas were tried in the wasm core
+  (ffmpeg 5.1.4) and both fail: for Fast, the last `progress` time of a null copy pass is the last
+  DTS from the container start, not the video length (cut intervals came out 8 to 20 ms instead of
+  33); for Precise, `end - start` is not the video length when a clip is not a whole number of
+  frames, and the concat demuxer lines each file up by its container start, which includes audio,
+  while the video starts 8 to 56 ms later depending on the segment.
+- So after each segment is written, the runner runs the core's `ffprobe` (`@ffmpeg/ffmpeg` 0.12.15
+  exposes it; 2 to 16 ms per call) on the segment for the container start, the video stream start
+  and the video duration, and writes `duration_i = vdur_i + lead_i - lead_(i+1)` where
+  `lead = video start - container start` (the last segment uses its own lead). `FFmpegLike` gains
+  `ffprobe(args)` and the runner reads the JSON it writes. The probe is part of the `cut` phase and
+  emits no label of its own. A probe failure falls back to no `duration` line for that entry (the
+  old behavior), never to a failed join.
 - Measured in the real core with this list: Precise and Fast joins are seamless at 30 and 60 fps
   (one identical frame interval across every cut), and the screen recording still passes through
   at its own timing (261 frames). The
