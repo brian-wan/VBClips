@@ -184,6 +184,10 @@ async function launchChrome(profile) {
   await page('Page.enable')
   await page('DOM.enable')
   await page('Runtime.enable')
+  // Desktop Chrome would offer the save dialog, which CDP cannot drive: keep the download path.
+  await page('Page.addScriptToEvaluateOnNewDocument', {
+    source: `Object.defineProperty(window, 'showSaveFilePicker', { value: undefined, configurable: true })`,
+  })
   const close = () => {
     ws.close()
     chrome.kill()
