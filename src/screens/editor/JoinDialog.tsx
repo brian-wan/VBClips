@@ -29,8 +29,17 @@ import {
   runJoin,
   type JoinEvent,
 } from '../../lib/join/runner'
+import {
+  isPickerCancel,
+  saveMethod,
+  savedLabel,
+  savingLabel,
+  writeBlob,
+  type SaveMethod,
+} from '../../lib/save'
 import { formatTime } from '../../lib/time'
 import { useCoarsePointer } from '../../hooks/useCoarsePointer'
+import { hasSavePicker, pickSaveFile } from '../../saveFile'
 import { browserStore } from '../../storage'
 import styles from './JoinDialog.module.css'
 
@@ -41,7 +50,22 @@ type Props = {
   onClose: () => void
 }
 
-type Result = { url: string; name: string; size: number; fellBack: boolean }
+type Result = {
+  blob: Blob
+  url: string
+  name: string
+  size: number
+  fellBack: boolean
+  /** How the file reaches the user: the save dialog, or a browser download. */
+  method: SaveMethod
+}
+
+/** Writing the result through the save dialog. */
+type Saving =
+  | { kind: 'idle' }
+  | { kind: 'saving'; written: number; total: number }
+  | { kind: 'saved'; fileName: string }
+  | { kind: 'failed'; message: string }
 /** `retryable`: the failure was inside a Fast cut, so "Try Precise" is offered. */
 type Failure = { message: string; mode: JoinMode; log: string[]; retryable: boolean }
 
@@ -114,6 +138,7 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
   const [preciseRate] = useState(() => loadRates(browserStore()).precise)
   /** The sources will be mounted as picked, which Chrome on macOS reads slowly. */
   const [uncached, setUncached] = useState(false)
+  const [saving, setSaving] = useState<Saving>({ kind: 'idle' })
 
   const abortRef = useRef<AbortController | null>(null)
   const resultUrl = useRef<string | null>(null)
@@ -197,8 +222,13 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
       if (resultUrl.current) URL.revokeObjectURL(resultUrl.current)
       const url = URL.createObjectURL(blob)
       resultUrl.current = url
-      downloadUrl(url, name)
-      setState({ kind: 'done', result: { url, name, size: blob.size, fellBack: view.fellBack } })
+      const method = saveMethod(hasSavePicker(), coarse)
+      if (method === 'download') downloadUrl(url, name)
+      setSaving({ kind: 'idle' })
+      setState({
+        kind: 'done',
+        result: { blob, url, name, size: blob.size, fellBack: view.fellBack, method },
+      })
     } catch (error) {
       if (error instanceof JoinCancelled) {
         setState({ kind: 'setup' })
@@ -212,6 +242,31 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
     } finally {
       if (abortRef.current === controller) abortRef.current = null
     }
+  }
+
+  /** Opens the save dialog at once, inside the click, then writes the video where it points. */
+  const saveVideo = (result: Result) => {
+    if (saving.kind === 'saving') return
+    const picking = pickSaveFile(result.name)
+    const write = async () => {
+      let handle: FileSystemFileHandle
+      try {
+        handle = await picking
+      } catch (error) {
+        // Closing the dialog without choosing leaves the finished state as it was.
+        if (isPickerCancel(error)) return
+        throw error
+      }
+      setSaving({ kind: 'saving', written: 0, total: result.size })
+      await writeBlob(await handle.createWritable(), result.blob, (written, total) =>
+        setSaving({ kind: 'saving', written, total }),
+      )
+      setSaving({ kind: 'saved', fileName: handle.name })
+    }
+    write().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error)
+      setSaving({ kind: 'failed', message })
+    })
   }
 
   const stop = () => {
@@ -332,7 +387,44 @@ export function JoinDialog({ sources, clips, onClose }: Props) {
           />
         )}
 
-        {state.kind === 'done' && (
+        {state.kind === 'done' && state.result.method === 'picker' && (
+          <>
+            <div className={styles.result} role="status">
+              <p className={styles.resultTitle}>
+                {saving.kind === 'saved'
+                  ? savedLabel(saving.fileName)
+                  : `Joined ${state.result.name}`}
+              </p>
+              <p className={styles.resultDetail}>
+                {saving.kind === 'saving'
+                  ? savingLabel(saving.written, saving.total)
+                  : formatBytes(state.result.size)}
+              </p>
+            </div>
+            {saving.kind === 'failed' && (
+              <p className={styles.errorMessage} role="alert">
+                Could not save the video ({saving.message}). Try Save video… again.
+              </p>
+            )}
+            {state.result.fellBack && <p className={styles.note}>{FALLBACK_REASON}</p>}
+            <div className={styles.actions}>
+              <button type="button" className={ui.secondary} onClick={onClose}>
+                Done
+              </button>
+              <button
+                type="button"
+                className={ui.primary}
+                disabled={saving.kind === 'saving'}
+                onClick={() => saveVideo(state.result)}
+                autoFocus
+              >
+                Save video…
+              </button>
+            </div>
+          </>
+        )}
+
+        {state.kind === 'done' && state.result.method === 'download' && (
           <>
             <div className={styles.result} role="status">
               <p className={styles.resultTitle}>Saved {state.result.name}</p>
