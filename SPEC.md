@@ -1101,7 +1101,11 @@ iCloud with optimized storage), which the app can only explain, not skip.
   chooses where the file goes. Browsers without the picker (Safari, Firefox) keep today's
   behavior: automatic download once, plus "Save again". Phone browsers keep their current
   behavior in this phase (the share sheet is a later item).
-- The result stays available for "Save video…" again until the dialog closes, as today.
+- The result stays available for "Save video…" again until the dialog closes, as today. Before
+  the first save the finished state reads "Joined <name>"; a failed write shows "Could not save
+  the video (<error>). Try Save video… again." and discards the partial file. "Phone" means a
+  touch primary pointer, as in Phase 9. The stress script hides `showSaveFilePicker` so it keeps
+  the download path.
 
 ### Fetching the engine early
 
@@ -1112,7 +1116,8 @@ iCloud with optimized storage), which the app can only explain, not skip.
   the files, for whichever core set the page would use, decided by the same rule as the Join. On a metered connection (`navigator.connection.saveData` true) it does nothing.
 - On the first editor open the app calls `navigator.storage.persist()` once, so the service
   worker's cached core and the staged copies survive the browser's eviction. The result is only
-  logged; no UI.
+  logged; no UI. Chrome grants it on its own only for installed or frequently used sites, so a
+  first visit usually logs "not granted"; that is expected.
 - The Join dialog's download phase then shows "Downloading ffmpeg" only when the early fetch has
   not finished; otherwise it goes straight to "Starting ffmpeg".
 
