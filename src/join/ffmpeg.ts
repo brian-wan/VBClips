@@ -106,6 +106,11 @@ export async function readChunks(
   }
 }
 
+const coreFiles = (config: CoreConfig) =>
+  [config.coreURL, config.wasmURL, config.workerURL].filter(
+    (url): url is string => url !== undefined,
+  )
+
 const mimeType = (url: string) => (/\.wasm$/.test(url) ? 'application/wasm' : 'text/javascript')
 
 export type CoreDownloaderOptions = {
@@ -113,10 +118,29 @@ export type CoreDownloaderOptions = {
   createObjectURL?: (blob: Blob) => string
 }
 
+/** Core files being fetched together, which later callers can wait on and hear from. */
+type Batch = {
+  urls: ReadonlySet<string>
+  received: number
+  /** Unknown until every response has arrived; null when a server sent no Content-Length. */
+  total: number | null | undefined
+  listeners: Set<() => void>
+  done: Promise<void>
+}
+
+/** Rejects with the signal's reason once it aborts. */
+function aborted(signal: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    if (signal.aborted) reject(signal.reason as Error)
+    else signal.addEventListener('abort', () => reject(signal.reason as Error), { once: true })
+  })
+}
+
 /**
  * Fetches core files with progress and hands back blob URLs, the way `toBlobURL` in
  * `@ffmpeg/util` does. Blob URLs are kept for the page, so later loads (after Stop, or a
- * fallback that needs a file it already has) download nothing.
+ * fallback that needs a file it already has) download nothing, and a file already being fetched
+ * (by the early fetch when the editor opens) is waited on rather than fetched twice.
  */
 export class CoreDownloader {
   private readonly fetch: (
@@ -125,47 +149,60 @@ export class CoreDownloader {
   ) => Promise<Response>
   private readonly createObjectURL: (blob: Blob) => string
   private readonly blobURLs = new Map<string, string>()
+  private readonly batches = new Set<Batch>()
 
   constructor(options: CoreDownloaderOptions = {}) {
     this.fetch = options.fetch ?? ((url, init) => fetch(url, { signal: init.signal ?? null }))
     this.createObjectURL = options.createObjectURL ?? ((blob) => URL.createObjectURL(blob))
   }
 
+  /** Whether every file of `config` is already in hand. */
+  has(config: CoreConfig): boolean {
+    return coreFiles(config).every((url) => this.blobURLs.has(url))
+  }
+
   /**
    * Ends with a report whose total equals the bytes received (0 of 0 when every file was cached),
-   * so the caller knows the last byte is in even when the server sent no Content-Length.
-   * Aborting `signal` stops the fetches and the readers. When one file fails or stalls, the
-   * others are cancelled too, and nothing is reported after the download has failed.
+   * so the caller knows the last byte is in even when the server sent no Content-Length. Files
+   * another caller is already fetching are joined, counting their bytes so far. Aborting
+   * `signal` stops the fetches this call started and stops waiting on the others. When one file
+   * fails or stalls, the others of its batch are cancelled too, and nothing is reported after
+   * the download has failed.
    */
   async download(
     config: CoreConfig,
     onProgress?: BatchListener,
     signal?: AbortSignal,
   ): Promise<CoreConfig> {
-    const urls = [config.coreURL, config.wasmURL, config.workerURL].filter(
-      (url): url is string => url !== undefined,
-    )
     signal?.throwIfAborted()
-    const missing = urls.filter((url) => !this.blobURLs.has(url))
-    let received = 0
-    let total: number | null = 0
-    if (missing.length > 0) {
-      // Aborted by the join's signal, or by this download when any one file fails.
-      const batch = new AbortController()
-      const forward = () => batch.abort(signal?.reason)
-      signal?.addEventListener('abort', forward, { once: true })
-      try {
-        const done = await this.fetchAll(missing, onProgress, batch.signal)
-        received = done.received
-        total = done.total
-      } catch (error) {
-        batch.abort(error)
-        throw error
-      } finally {
-        signal?.removeEventListener('abort', forward)
-      }
+    const missing = coreFiles(config).filter((url) => !this.blobURLs.has(url))
+    const joined = [...this.batches].filter((batch) => missing.some((url) => batch.urls.has(url)))
+    const uncovered = missing.filter((url) => !joined.some((batch) => batch.urls.has(url)))
+    const involved = uncovered.length > 0 ? [...joined, this.start(uncovered, signal)] : joined
+
+    let live = true
+    const sum = () => involved.reduce((n, batch) => n + batch.received, 0)
+    const total = () => {
+      const totals = involved.map((batch) => batch.total)
+      return totals.every((n) => typeof n === 'number')
+        ? totals.reduce<number>((n, t) => n + t, 0)
+        : null
     }
-    if (missing.length === 0 || received !== total) onProgress?.(received, received)
+    const report = () => {
+      if (!live || involved.some((batch) => batch.total === undefined)) return
+      onProgress?.(sum(), total())
+    }
+    for (const batch of involved) batch.listeners.add(report)
+    if (involved.length > 0) report()
+    try {
+      const all = Promise.all(involved.map((batch) => batch.done))
+      await (signal ? Promise.race([all, aborted(signal)]) : all)
+    } finally {
+      live = false
+      for (const batch of involved) batch.listeners.delete(report)
+    }
+    const received = sum()
+    if (involved.length === 0 || received !== total()) onProgress?.(received, received)
     const blobURL = (url: string) => this.blobURLs.get(url) as string
     return {
       coreURL: blobURL(config.coreURL),
@@ -174,12 +211,47 @@ export class CoreDownloader {
     }
   }
 
+  /** Starts fetching `urls` as one batch; `signal`, or any one file failing, stops all of them. */
+  private start(urls: readonly string[], signal: AbortSignal | undefined): Batch {
+    const controller = new AbortController()
+    const forward = () => controller.abort(signal?.reason)
+    signal?.addEventListener('abort', forward, { once: true })
+    const batch: Batch = {
+      urls: new Set(urls),
+      received: 0,
+      total: undefined,
+      listeners: new Set(),
+      done: Promise.resolve(),
+    }
+    batch.done = this.fetchAll(
+      urls,
+      (received, total) => {
+        batch.received = received
+        batch.total = total
+        for (const listener of batch.listeners) listener()
+      },
+      controller.signal,
+    )
+      .catch((error: unknown) => {
+        controller.abort(error)
+        throw error
+      })
+      .finally(() => {
+        signal?.removeEventListener('abort', forward)
+        this.batches.delete(batch)
+      })
+    // Whoever started the batch may stop waiting on it; its failure is reported to the waiters.
+    batch.done.catch(() => undefined)
+    this.batches.add(batch)
+    return batch
+  }
+
   /** Fetches and reads `missing` side by side; `signal` stops all of them. */
   private async fetchAll(
     missing: readonly string[],
-    onProgress: BatchListener | undefined,
+    onProgress: BatchListener,
     signal: AbortSignal,
-  ): Promise<{ received: number; total: number | null }> {
+  ): Promise<void> {
     const responses = await Promise.all(
       missing.map(async (url) => {
         const response = await this.fetch(url, { signal })
@@ -193,7 +265,7 @@ export class CoreDownloader {
       : null
     let received = 0
     const report = () => {
-      if (!signal.aborted) onProgress?.(received, total)
+      if (!signal.aborted) onProgress(received, total)
     }
     report()
     await Promise.all(
@@ -210,7 +282,6 @@ export class CoreDownloader {
         this.blobURLs.set(url, this.createObjectURL(blob))
       }),
     )
-    return { received, total }
   }
 }
 
@@ -293,6 +364,20 @@ export class BrowserFFmpeg implements FFmpegLike {
     return ffmpeg
   }
 
+  /** Multi-thread unless the page is not isolated or the multi-thread core failed to start. */
+  private multiThreadCore(): boolean {
+    return !this.choice.singleThreadOnly && this.multiThread()
+  }
+
+  /**
+   * Fetches the files the next `load` would start, by the same rule, without starting anything:
+   * no worker, no core. A later load finds them in hand, or joins the fetch still running.
+   */
+  async prefetch(): Promise<void> {
+    if (this.ffmpeg.loaded) return
+    await this.downloadCore(this.coreConfig(this.multiThreadCore()))
+  }
+
   private emitLog(message: string) {
     this.logListeners.forEach((listener) => listener({ type: 'info', message }))
   }
@@ -337,7 +422,7 @@ export class BrowserFFmpeg implements FFmpegLike {
       throw new Error('ffmpeg did not start')
     }
 
-    if (this.choice.singleThreadOnly || !this.multiThread()) {
+    if (!this.multiThreadCore()) {
       await startSingleThread()
       return
     }
@@ -402,7 +487,7 @@ export class BrowserFFmpeg implements FFmpegLike {
 let shared: BrowserFFmpeg | null = null
 
 /** One instance for the app, so the 30 MB core loads once and is reused across joins. */
-export function getFFmpeg(): FFmpegLike {
+export function getFFmpeg(): BrowserFFmpeg {
   shared ??= new BrowserFFmpeg()
   return shared
 }

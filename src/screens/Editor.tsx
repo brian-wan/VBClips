@@ -24,6 +24,7 @@ import { useEditorShortcuts } from '../hooks/useEditorShortcuts'
 import { useSessionPersistence } from '../hooks/useSessionPersistence'
 import { useToasts, type Toast } from '../hooks/useToasts'
 import { useVideoPlayer } from '../hooks/useVideoPlayer'
+import { persistStorageOnce, scheduleEarlyFetch } from '../join/earlyFetch'
 import { clearStaged } from '../join/staging'
 import { findOverlappingIds, totalClippedDuration, type Clip } from '../lib/clips'
 import { fingerprint } from '../lib/fingerprint'
@@ -115,6 +116,12 @@ export function Editor({
   }, [files])
   // Every way out of the editor (Home, Back, the error boundary) unmounts it.
   useEffect(() => () => void clearStaged(), [])
+  const hasSource = sources.length > 0
+  useEffect(() => {
+    if (!hasSource) return
+    persistStorageOnce()
+    return scheduleEarlyFetch()
+  }, [hasSource])
 
   const playerSources = useMemo(
     () => sources.map((s) => ({ id: s.id, duration: s.duration, url: urls.get(s.id) })),

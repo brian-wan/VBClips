@@ -516,7 +516,9 @@ function Progress({
   onKeepGoing,
 }: ProgressProps) {
   const percent = percentOf(event.progress)
-  const announcement = PHASE_ANNOUNCEMENTS[event.phase]
+  // Before the first download report the core may already be in hand: say nothing about bytes.
+  const announcement =
+    event.label === LOADING_LABEL ? LOADING_LABEL : PHASE_ANNOUNCEMENTS[event.phase]
 
   return (
     <>

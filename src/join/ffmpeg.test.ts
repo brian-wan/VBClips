@@ -90,6 +90,49 @@ function fakeServer(files: Record<string, number[]>, withLength = true) {
   return { downloader, fetched, blobs }
 }
 
+/**
+ * st.js and st.wasm with Content-Length 100 and 900; `sendFirstChunks` delivers st.js and the
+ * first 400 bytes of st.wasm, `finish` the rest.
+ */
+function gatedServer() {
+  const fetched: string[] = []
+  let send: ((size: number | null) => void) | null = null
+  const wasm = new ReadableStream<Uint8Array>({
+    start(controller) {
+      send = (size) => {
+        if (size === null) controller.close()
+        else controller.enqueue(new Uint8Array(size))
+      }
+    },
+  })
+  const bodies: Record<string, () => Response> = {
+    'st.js': () => streamed([100], true),
+    'st.wasm': () => new Response(wasm, { headers: { 'Content-Length': '900' } }),
+  }
+  let urls = 0
+  const downloader = new CoreDownloader({
+    fetch: (url) => {
+      fetched.push(url)
+      return Promise.resolve((bodies[url] ?? (() => new Response(null)))())
+    },
+    createObjectURL: () => `blob:${urls++}`,
+  })
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+  return {
+    downloader,
+    fetched,
+    sendFirstChunks: async () => {
+      await settle()
+      send?.(400)
+      await settle()
+    },
+    finish: () => {
+      send?.(500)
+      send?.(null)
+    },
+  }
+}
+
 const files = {
   'st.js': [100],
   'st.wasm': [400, 500],
@@ -229,6 +272,57 @@ describe('CoreDownloader', () => {
     }
   })
 
+  it('joins a download already running instead of fetching the files again', async () => {
+    const gate = gatedServer()
+    const early = gate.downloader.download(config(false))
+    await gate.sendFirstChunks()
+    const reports: [number, number | null][] = []
+    const join = gate.downloader.download(config(false), (received, total) =>
+      reports.push([received, total]),
+    )
+    await Promise.resolve()
+    expect(reports[0]).toEqual([500, 1000])
+    gate.finish()
+    const [first, second] = await Promise.all([early, join])
+    expect(second).toEqual(first)
+    expect(gate.fetched).toEqual(['st.js', 'st.wasm'])
+    expect(reports.at(-1)).toEqual([1000, 1000])
+    expect(gate.downloader.has(config(false))).toBe(true)
+  })
+
+  it('stops waiting when a caller that joined aborts, and the running download carries on', async () => {
+    const gate = gatedServer()
+    const early = gate.downloader.download(config(false))
+    await gate.sendFirstChunks()
+    const controller = new AbortController()
+    const reports: number[] = []
+    const join = gate.downloader.download(
+      config(false),
+      (received) => reports.push(received),
+      controller.signal,
+    )
+    controller.abort()
+    await expect(join).rejects.toThrow(/abort/i)
+    const atAbort = reports.length
+    gate.finish()
+    await expect(early).resolves.toHaveProperty('wasmURL')
+    expect(reports).toHaveLength(atAbort)
+    expect(gate.fetched).toEqual(['st.js', 'st.wasm'])
+  })
+
+  it('fetches again after a running download failed', async () => {
+    let attempt = 0
+    const downloader = new CoreDownloader({
+      fetch: () =>
+        attempt++ < 2
+          ? Promise.resolve(new Response('missing', { status: 503 }))
+          : Promise.resolve(streamed([10], true)),
+      createObjectURL: () => 'blob:x',
+    })
+    await expect(downloader.download(config(false))).rejects.toThrow(/HTTP 503/)
+    await expect(downloader.download(config(false))).resolves.toHaveProperty('coreURL', 'blob:x')
+  })
+
   it('fails on an HTTP error', async () => {
     const downloader = new CoreDownloader({
       fetch: () => Promise.resolve(new Response('missing', { status: 404 })),
@@ -332,6 +426,21 @@ describe('BrowserFFmpeg.load', () => {
     reports.length = 0
     await adapter.load((progress) => reports.push(progress))
     expect(reports).toEqual([{ received: 0, total: 0 }])
+  })
+
+  it('prefetches the files the next load would use, and starts no core', async () => {
+    const requested: CoreConfig[] = []
+    const download = (urls: CoreConfig) => {
+      requested.push(urls)
+      return Promise.resolve(urls)
+    }
+    const { adapter, cores } = setup(false, undefined, download)
+    await adapter.prefetch()
+    const singleOnly = setup(false, { singleThreadOnly: true }, download)
+    await singleOnly.adapter.prefetch()
+    expect(requested).toEqual([config(true), config(false)])
+    expect(cores[0]?.loads).toEqual([])
+    expect(singleOnly.cores[0]?.loads).toEqual([])
   })
 
   it('passes the abort signal to the download', async () => {
