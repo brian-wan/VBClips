@@ -1108,10 +1108,8 @@ iCloud with optimized storage), which the app can only explain, not skip.
 - When the editor opens with at least one source, the app starts the ffmpeg core download in the
   background after the first idle moment (`requestIdleCallback`, falling back to a 2 s timer),
   through the same downloader and cache the Join uses, so a later Join finds the core already
-  cached or already in flight. It never starts the core (no worker, no `load`), only fetches the
-  files. It skips when the page is not cross-origin isolated and the single-thread core would be
-  used instead? No: it fetches whichever core set the page would use, decided by the same rule as
-  the Join. On a metered connection (`navigator.connection.saveData` true) it does nothing.
+  cached or already in flight. It never starts the core (no worker, no `load`), only fetches
+  the files, for whichever core set the page would use, decided by the same rule as the Join. On a metered connection (`navigator.connection.saveData` true) it does nothing.
 - On the first editor open the app calls `navigator.storage.persist()` once, so the service
   worker's cached core and the staged copies survive the browser's eviction. The result is only
   logged; no UI.
