@@ -80,10 +80,23 @@ each control's key as a chip.
 ## Joining clips
 
 Join renders the marked clips back to back, in timeline order, into
-`<first video name>-highlights.mp4`, which downloads automatically (Save again downloads it once
-more until you close the dialog). Overlapping clips of the same video are merged first, so shared
+`<first video name>-highlights.mp4`. Overlapping clips of the same video are merged first, so shared
 footage appears once. Everything runs in the browser with ffmpeg.wasm; each source file is mounted
 read-only, never uploaded or copied into memory.
+
+Saving: in Chrome and Edge on a computer, the finished dialog offers "Save video…", which opens the
+system save dialog so you choose the folder; the file is written there with progress ("Saving · 412
+of 980 MB") and the dialog then says "Saved to <file name>". Nothing downloads on its own in those
+browsers, and Save video… works again until you close the dialog. Safari, Firefox and phones have no
+save dialog for web pages, so there the file downloads automatically once, and Save again downloads
+it once more until you close the dialog.
+
+The ffmpeg engine is fetched early: once the editor has a video, the app downloads the core files
+in the background at the first idle moment (after 2 s in browsers without idle callbacks), so a
+join usually goes straight to "Starting ffmpeg". It only fetches the files and never starts ffmpeg,
+and it skips the early download when the browser asks to save data. On the first editor open the
+app also asks the browser to keep its storage (`navigator.storage.persist()`), so the cached core
+and the staged video copies are not evicted when the disk runs low.
 
 - Fast (default) stream-copies each clip and then concatenates them. It takes seconds, but cuts
   can only land on keyframes, so a clip may start up to one keyframe interval early (usually
@@ -104,7 +117,7 @@ for the videos plus 10%. Without that space, or in a browser that cannot write p
 worker (older Safari), Join reads the picked file directly and the dialog says it may be slow.
 
 While a join runs, one bar covers the whole job: downloading ffmpeg (about 32 MB with the bytes shown, only
-for the first join on this device, since the service worker keeps it), preparing the video, cutting each clip,
+when the early fetch above has not finished, since the service worker keeps it after the first time), preparing the video, cutting each clip,
 combining them and saving. Each part takes its share of the bar by how long it is expected to take, so the percent tracks real work
 and never moves backwards (except once, if Fast has to switch to Precise). The time left comes
 from the speed measured during the run, smoothed so it does not flicker, and reads "Estimating…"
@@ -114,7 +127,10 @@ in `localStorage` under `vbclipper:join-rates`, so the next join starts from the
 Opening videos shows progress too: Choose Video and Continue Session read "Opening <name>…" (or
 "Opening 2 of 3…") while each file's length is read, the plus tile spins while added videos are
 read, and a block header shows "Preparing frames 12/25" with a thin line until its filmstrip is
-complete.
+complete. Most of an opening's wait is the operating system reading the file, which is slow
+the first time for a video kept in iCloud with optimized storage or on an external drive; after
+3 s Home says so in a second line, and a file that has not opened after 15 s gets a message
+suggesting to download it from iCloud first.
 
 If Fast cannot combine the clips (usually because their codec settings differ, as with videos
 from different cameras), the join switches to Precise on its own and says why. The joined file is assembled in browser memory, so Join refuses
