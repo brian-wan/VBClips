@@ -37,6 +37,8 @@ decisions. If something here is impossible, say so in the report instead of impr
 9. Phones and tablets: a single-column touch layout. Details in "Phase 9: Mobile" below.
 10. Seamless cuts: no frame holds at join points, verified on a 25-minute recording. Details in
     "Phase 10: Seamless cuts" below.
+11. Laptop open and save: save where the user chooses, fetch the engine early, honest waits.
+    Details in "Phase 11: Open and save" below.
 
 ## Screens
 
@@ -1075,3 +1077,64 @@ spread across it) and an 8-minute 1080p60 one (eight clips), both join modes.
 - `scripts/stress-join.mjs` passes on both recordings; report the table. Also re-run the
   screen-recording check from Phase 8 (Precise 261 frames, timing identical to the source) to
   make sure variable frame rate still passes through.
+
+## Phase 11: Open and save
+
+Settled. On a laptop the user reports a long wait when opening a video and another when getting
+the joined video back, while the phone app feels instant. The code confirms three causes the app
+can address: the result is delivered through a download link (the browser copies the whole file
+into Downloads with no feedback), the ffmpeg engine is fetched only when Join is pressed, and the
+browser is never asked to keep that engine, so a dropped cache means another 32 MB download. The
+open wait itself is mostly the operating system reading the file (slow when the video lives in
+iCloud with optimized storage), which the app can only explain, not skip.
+
+### Saving the result
+
+- Where the File System Access API exists (Chrome and Edge on desktop; detect
+  `window.showSaveFilePicker`), the Join dialog's finished state offers "Save video…" as the
+  primary action. It opens the system save dialog with the suggested name
+  `<video>-highlights.mp4` and type `video/mp4`, then writes the Blob through
+  `createWritable()` with a progress line "Saving · 412 of 980 MB" in the dialog; on completion
+  the dialog says "Saved to <file name>". The picker is opened synchronously from the click (user
+  activation), and a cancelled picker leaves the dialog in its finished state.
+- Nothing downloads automatically anymore on desktop browsers that have the picker; the user
+  chooses where the file goes. Browsers without the picker (Safari, Firefox) keep today's
+  behavior: automatic download once, plus "Save again". Phone browsers keep their current
+  behavior in this phase (the share sheet is a later item).
+- The result stays available for "Save video…" again until the dialog closes, as today.
+
+### Fetching the engine early
+
+- When the editor opens with at least one source, the app starts the ffmpeg core download in the
+  background after the first idle moment (`requestIdleCallback`, falling back to a 2 s timer),
+  through the same downloader and cache the Join uses, so a later Join finds the core already
+  cached or already in flight. It never starts the core (no worker, no `load`), only fetches the
+  files. It skips when the page is not cross-origin isolated and the single-thread core would be
+  used instead? No: it fetches whichever core set the page would use, decided by the same rule as
+  the Join. On a metered connection (`navigator.connection.saveData` true) it does nothing.
+- On the first editor open the app calls `navigator.storage.persist()` once, so the service
+  worker's cached core and the staged copies survive the browser's eviction. The result is only
+  logged; no UI.
+- The Join dialog's download phase then shows "Downloading ffmpeg" only when the early fetch has
+  not finished; otherwise it goes straight to "Starting ffmpeg".
+
+### Honest waits while opening
+
+- The "Opening <name>…" state on Home gains a second line after 3 s: "Still reading the file.
+  Videos stored in iCloud or on an external drive take longer the first time." It disappears when
+  the editor opens.
+- The duration probe keeps its 15 s timeout; when it times out on a large file the error reads
+  "<name> took too long to open. If it is stored in iCloud, download it first and try again."
+
+### Verification
+
+- Unit tests: the save flow's progress math and the picker/download decision (pure parts), the
+  early-fetch scheduling rule (idle callback, saveData skip), the opening second-line timer.
+- Headless Chrome against `pnpm preview`: with a 1 GB generated recording, Join then "Save video…"
+  writes the file through a stubbed `showSaveFilePicker` (CDP cannot drive the real dialog; stub it
+  with a handle backed by OPFS and confirm the written size equals the Blob size and the progress
+  line advanced); the early fetch puts both core files in the cache within 10 s of opening the
+  editor, and a following Join shows no "Downloading ffmpeg" phase; `navigator.storage.persisted()`
+  is true after the first editor open (headless Chrome grants it); the opening second line appears
+  at 3 s when the probe is artificially delayed. Firefox or Safari behavior is reasoned from the
+  code paths, not tested.
