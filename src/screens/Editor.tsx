@@ -44,7 +44,7 @@ import { formatTime } from '../lib/time'
 import { loadSource } from '../media/loadSource'
 import { SourceFiles } from '../media/sourceFiles'
 import { thumbnails } from '../media/thumbnails'
-import { unplayableMessage } from '../playable'
+import { openFailureMessage, unplayableMessage } from '../playable'
 import styles from './Editor.module.css'
 import { ClipEditor } from './editor/ClipEditor'
 import { ClipsList } from './editor/ClipsList'
@@ -323,8 +323,8 @@ export function Editor({
       }),
     )
     loaded.forEach(({ file, source }) => {
-      if (!source) {
-        showToast(unplayableMessage(file.name), { timeout: 5000 })
+      if (typeof source === 'string') {
+        showToast(openFailureMessage(file.name, source), { timeout: 5000 })
         return
       }
       files.add(source.meta.id, source.file)

@@ -6,6 +6,18 @@ export function openingLabel(names: readonly string[], done: number): string {
 
 export type Opening = { names: string[]; done: number }
 
+/** How long an opening may take before the second line explains the wait. */
+export const SLOW_OPENING_MS = 3000
+
+export const SLOW_OPENING_HINT =
+  'Still reading the file. Videos stored in iCloud or on an external drive take longer the first time.'
+
+/** Calls `onSlow` once the opening has lasted 3 s; the returned function cancels it. */
+export function watchSlowOpening(onSlow: () => void): () => void {
+  const timer = setTimeout(onSlow, SLOW_OPENING_MS)
+  return () => clearTimeout(timer)
+}
+
 /** Adds a batch of files to an opening in progress, or starts one. */
 export function startOpening(current: Opening | null, names: readonly string[]): Opening {
   return current

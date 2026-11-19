@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canProbablyPlay } from './playable'
+import { canProbablyPlay, openFailureMessage, unplayableMessage } from './playable'
 
 const fileOfType = (type: string) => new File([''], 'game.ext', { type })
 
@@ -17,5 +17,17 @@ describe('canProbablyPlay', () => {
   it('rejects files that are not video', () => {
     expect(canProbablyPlay(fileOfType('image/png'))).toBe(false)
     expect(canProbablyPlay(fileOfType('application/pdf'))).toBe(false)
+  })
+})
+
+describe('openFailureMessage', () => {
+  it('says a file that took too long may still be in iCloud', () => {
+    expect(openFailureMessage('game.mov', 'timeout')).toBe(
+      'game.mov took too long to open. If it is stored in iCloud, download it first and try again.',
+    )
+  })
+
+  it('keeps the unplayable message for files the browser cannot play', () => {
+    expect(openFailureMessage('game.mov', 'unplayable')).toBe(unplayableMessage('game.mov'))
   })
 })

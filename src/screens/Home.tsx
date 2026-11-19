@@ -7,13 +7,13 @@ import ui from '../components/ui.module.css'
 import { formatBytes } from '../lib/bytes'
 import { totalClippedDuration } from '../lib/clips'
 import { fingerprint } from '../lib/fingerprint'
-import { openingLabel, type Opening } from '../lib/opening'
+import { SLOW_OPENING_HINT, openingLabel, watchSlowOpening, type Opening } from '../lib/opening'
 import { clearSessions, loadSession, type SavedSession } from '../lib/persistence'
 import { matchSavedSources } from '../lib/resume'
 import { keptPlayhead } from '../lib/sequence'
 import { formatTime } from '../lib/time'
 import { loadSource } from '../media/loadSource'
-import { unplayableMessage } from '../playable'
+import { openFailureMessage, unplayableMessage } from '../playable'
 import { browserStore } from '../storage'
 import styles from './Home.module.css'
 
@@ -27,7 +27,7 @@ type PickMode = 'new' | 'continue'
 
 type Loaded = { sources: LoadedSource[] } | { error: string; failedIds: string[] }
 
-/** Probes every file; on failure, names the first one the browser cannot play and lists all. */
+/** Probes every file; on failure, names the first one that did not open and lists all. */
 async function loadAll(files: File[], onEach: () => void): Promise<Loaded> {
   const loaded = await Promise.all(
     files.map(async (file) => {
@@ -36,11 +36,17 @@ async function loadAll(files: File[], onEach: () => void): Promise<Loaded> {
       return source
     }),
   )
-  const sources = loaded.filter((source) => source !== null)
-  const failed = files.filter((_, i) => loaded[i] === null)
+  const sources = loaded.filter((source) => typeof source !== 'string')
+  const failed = files.flatMap((file, i) => {
+    const failure = loaded[i]
+    return typeof failure === 'string' ? [{ file, failure }] : []
+  })
   const first = failed[0]
   if (!first) return { sources }
-  return { error: unplayableMessage(first.name), failedIds: failed.map(fingerprint) }
+  return {
+    error: openFailureMessage(first.file.name, first.failure),
+    failedIds: failed.map(({ file }) => fingerprint(file)),
+  }
 }
 
 export function Home({ onOpen, error, onError }: Props) {
@@ -56,8 +62,20 @@ export function Home({ onOpen, error, onError }: Props) {
   const [dragging, setDragging] = useState(false)
   /** Files being probed and which control started it; both controls are disabled meanwhile. */
   const [opening, setOpening] = useState<(Opening & { from: PickMode }) | null>(null)
+  /** The opening has lasted long enough to explain why. */
+  const [slow, setSlow] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const pickMode = useRef<PickMode>('new')
+
+  const isOpening = opening !== null
+  useEffect(() => {
+    if (!isOpening) return
+    const cancel = watchSlowOpening(() => setSlow(true))
+    return () => {
+      cancel()
+      setSlow(false)
+    }
+  }, [isOpening])
 
   useEffect(() => {
     if (!confirmDelete) return
@@ -225,6 +243,7 @@ export function Home({ onOpen, error, onError }: Props) {
           />
         )}
       </div>
+      {slow && opening?.from === 'new' && <p className={styles.slowHint}>{SLOW_OPENING_HINT}</p>}
       <input
         ref={inputRef}
         type="file"
@@ -290,6 +309,9 @@ export function Home({ onOpen, error, onError }: Props) {
             />
           )}
         </div>
+      )}
+      {slow && opening?.from === 'continue' && (
+        <p className={styles.slowHint}>{SLOW_OPENING_HINT}</p>
       )}
 
       {saved && !mismatch && missing.length === 0 && (

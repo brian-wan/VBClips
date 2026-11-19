@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { advanceOpening, openingLabel, startOpening } from './opening'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  SLOW_OPENING_HINT,
+  SLOW_OPENING_MS,
+  advanceOpening,
+  openingLabel,
+  startOpening,
+  watchSlowOpening,
+} from './opening'
 
 describe('openingLabel', () => {
   it('names a single file', () => {
@@ -25,5 +32,36 @@ describe('startOpening and advanceOpening', () => {
     })
     expect(advanceOpening(advanceOpening(advanceOpening(opening)))).toBeNull()
     expect(advanceOpening(null)).toBeNull()
+  })
+})
+
+describe('watchSlowOpening', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('shows the second line once the opening has lasted 3 s', () => {
+    const onSlow = vi.fn()
+    watchSlowOpening(onSlow)
+    vi.advanceTimersByTime(SLOW_OPENING_MS - 1)
+    expect(onSlow).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(onSlow).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(60_000)
+    expect(onSlow).toHaveBeenCalledTimes(1)
+  })
+
+  it('never shows it for an opening that ends first', () => {
+    const onSlow = vi.fn()
+    const cancel = watchSlowOpening(onSlow)
+    vi.advanceTimersByTime(2999)
+    cancel()
+    vi.advanceTimersByTime(60_000)
+    expect(onSlow).not.toHaveBeenCalled()
+  })
+
+  it('explains where slow files usually live', () => {
+    expect(SLOW_OPENING_HINT).toBe(
+      'Still reading the file. Videos stored in iCloud or on an external drive take longer the first time.',
+    )
   })
 })
